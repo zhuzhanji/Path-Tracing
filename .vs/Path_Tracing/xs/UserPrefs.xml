@@ -1,0 +1,27 @@
+﻿<Properties StartupConfiguration="{44D0DEE1-C27C-871F-CE8C-A7973FAF90E8}|">
+  <MonoDevelop.Ide.Workbench ActiveDocument="Assets/MyDefered.shader">
+    <Files>
+      <File FileName="Assets/RayTracingShader.compute" Line="1" Column="1" />
+      <File FileName="Assets/MyDefered.shader" Line="1" Column="1" />
+    </Files>
+    <Pads>
+      <Pad Id="ProjectPad">
+        <State name="__root__">
+          <Node name="Path_Tracing" expanded="True">
+            <Node name="Assets" expanded="True">
+              <Node name="Scripts" expanded="True" />
+              <Node name="MyDefered.shader" selected="True" />
+            </Node>
+          </Node>
+        </State>
+      </Pad>
+    </Pads>
+  </MonoDevelop.Ide.Workbench>
+  <MonoDevelop.Ide.DebuggingService.PinnedWatches />
+  <MonoDevelop.Ide.Workspace ActiveConfiguration="Debug" />
+  <MonoDevelop.Ide.ItemProperties.Assembly-CSharp PreferredExecutionTarget="7a3a3b24-ed0a-4032-9d60-41d22230fe13" />
+  <MonoDevelop.Ide.DebuggingService.Breakpoints>
+    <BreakpointStore />
+  </MonoDevelop.Ide.DebuggingService.Breakpoints>
+  <MultiItemStartupConfigurations />
+</Properties>

@@ -1,0 +1,102 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+// Create a RenderTexture with enableRandomWrite flag and set it
+// with cs.SetTexture
+RWTexture2D<float4> Result;
+
+// GBuffer
+Texture2D<float4> _NormalTexture;
+SamplerState sampler_NormalTexture;
+
+Texture2D<float4> _PositionTexture;
+SamplerState sampler_PositionTexture;
+
+Texture2D<float4> _RayTracingTexture;
+SamplerState sampler_RayTracingTexture;
+
+int level;
+
+
+float3 ewaDenoiser(float2 uv0, float2 resolution)
+{
+        // A_Trous kernel
+        float Gaussian55[5][5] = {
+	        {.0030f, .0133f, .0219f, .0133f, .0030f },
+	        { .0133f, .0596f, .0983f, .0596f, .0133f },
+	        { .0219f, .0983f, .1621f, .0983f, .0219f },
+	        { .0133f, .0596f, .0983f, .0596f, .0133f },
+	        { .0030f, .0133f, .0219f, .0133f, .0030f }
+        };
+        float p_phi = 0.2f;
+        float n_phi = 0.35f;
+        float c_phi = 0.45f;
+
+        float3 sum = float3(0.f, 0.f, 0.f);
+        float3 c_val = _RayTracingTexture.SampleLevel(sampler_RayTracingTexture, uv0, 0).xyz;
+        float3 n_val = _NormalTexture.SampleLevel(sampler_NormalTexture, uv0, 0).xyz;
+        float3 p_val = _PositionTexture.SampleLevel(sampler_PositionTexture, uv0, 0).xyz;
+        float x = uv0.x;
+        float y = uv0.y;
+
+        if(dot(n_val, n_val) < 0.001) return c_val;
+
+        int step_width = 1 << level;
+
+        
+        float cum_w = 0.f;
+        // Traverse all neighbors
+        for (int v = -2; v <= 2; v++) {
+            for (int u = -2; u <= 2; u++) {
+                // Coordinates of neighbor, changing for different iterations
+                float2 uv = clamp(float2(x + u * step_width/resolution.x, y + v * step_width/resolution.y), 0.0, 1.0);
+
+                // Color of neighbor
+                float3 c_tmp = _RayTracingTexture.SampleLevel(sampler_RayTracingTexture, uv, 0).xyz;
+
+                // Weight for rt buffer
+                float dist = distance(c_val, c_tmp);
+                float c_w = min(exp(-dist / (c_phi * c_phi)), 1.f);
+
+                // Weight for normal buffer
+                float3 n_tmp = _NormalTexture.SampleLevel(sampler_NormalTexture, uv, 0).xyz;
+                dist = max(distance(n_val, n_tmp) / (step_width * step_width), 0.f);
+                float n_w = min(exp(-dist / (n_phi * n_phi)), 1.f);
+
+                // Weight for position buffer
+                float3 p_tmp = _PositionTexture.SampleLevel(sampler_PositionTexture, uv, 0).xyz;
+                dist = distance(p_val, p_tmp);
+                float p_w = min(exp(-dist / (p_phi * p_phi)), 1.f);
+
+                // Filter value at corresponding position
+                float f_val = Gaussian55[u+2][v+2];
+
+                // Add contribution and normalize result
+                sum += c_tmp * f_val * c_w * n_w * p_w;
+                cum_w += f_val * c_w * n_w * p_w;
+
+                // Filter without edge-avoiding
+                //sum += c_tmp * f_val;
+                //cum_w += f_val;
+            }
+        }
+
+        return sum / cum_w;
+}
+
+
+
+[numthreads(8,8,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    float2 pixel = id.xy;
+	uint width, height;
+    Result.GetDimensions(width, height);
+
+    // Transform pixel to [-1,1] range
+    float2 uv = float2((id.xy) / float2(width, height));
+
+    float3 result = ewaDenoiser(uv, float2(width, height));
+    //result = _RayTracingTexture.SampleLevel(sampler_RayTracingTexture, uv, 0).xyz;
+    Result[id.xy] = float4(result, 1);
+}
