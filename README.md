@@ -25,7 +25,7 @@
 
 <img width="809" alt="Screenshot 2024-05-14 at 08 15 10" src="https://github.com/zhuzhanji/Path-Tracing/assets/37281560/c6f86c87-0f72-4f29-992b-c8f192dc5eb7">
 
-With depth of filed on.
+## With depth of filed on.
 
 <img width="808" alt="Screenshot 2024-05-14 at 08 19 34" src="https://github.com/zhuzhanji/Path-Tracing/assets/37281560/1a00088c-5297-4147-a3cc-7604537810fb">
 
