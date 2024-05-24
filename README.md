@@ -7,6 +7,7 @@
 * Simple TAA
 
 * Edge-avoiding À-Trous Wavelet Filter
+* Spatiotemporal Variance-Guided Filter
 
 * Field of Depth
 
