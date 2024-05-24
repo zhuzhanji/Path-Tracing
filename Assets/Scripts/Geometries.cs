@@ -6,7 +6,9 @@ public struct Sphere {
         public Vector3 albedo, specular, emission;
         public float roughness;
         public float metallic;
-        public int type;
+    public int matid;
+    public int type;
+
 
         public static Sphere CreateRandomSphere(  // TODO: move to separate file
             (float minR, float maxR) radiusRange,

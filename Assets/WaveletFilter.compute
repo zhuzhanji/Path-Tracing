@@ -1,0 +1,136 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+
+//Texture2D<float4> devColorIn;
+//SamplerState sampler_devColorIn;
+RWTexture2D<float4> devColorIn;
+
+//Texture2D<float>  devVarainceIn;
+//SamplerState sampler_devVarainceIn;
+RWTexture2D<float>  devVarainceIn;
+
+//Texture2D<float>  devFilteredVariance;
+//SamplerState sampler_devFilteredVariance;
+RWTexture2D<float>  devFilteredVariance;
+// GBuffer
+//Texture2D<float4> _NormalTexture;
+//SamplerState sampler_NormalTexture;
+RWTexture2D<float4> _NormalTexture;
+
+//Texture2D<float4> _PositionTexture;
+//SamplerState sampler_PositionTexture;
+RWTexture2D<float4> _PositionTexture;
+
+RWTexture2D<float4> devColorOut;
+RWTexture2D<float> devVarianceOut;
+
+
+int level;
+
+
+static const float sigNormal = 128.0f;
+static const float sigDepth = 1.0f;
+static const float sigLuminance = 4.0f;
+static const float Gaussian5x5[5][5] = {
+	{ .0030f, .0133f, .0219f, .0133f, .0030f },
+	{ .0133f, .0596f, .0983f, .0596f, .0133f },
+	{ .0219f, .0983f, .1621f, .0983f, .0219f },
+	{ .0133f, .0596f, .0983f, .0596f, .0133f },
+	{ .0030f, .0133f, .0219f, .0133f, .0030f }
+};
+
+float luminance(float3 color) {
+    return dot(color, float3(.2126f, .7152f, .0722f));
+}
+
+[numthreads(8,8,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    // TODO: insert actual code here!
+
+	int step = 1 << level;
+
+    int2 idx = id.xy;
+
+	uint width, height;
+    devColorOut.GetDimensions(width, height);
+
+
+	if (idx.x >= width || idx.y >= height) {
+		return;
+	}
+
+    uint2 uv = idx;
+
+	int primIdP = _NormalTexture[uv].w;
+
+	float3 colorP = devColorIn[uv].xyz;
+	float  varP   = devVarainceIn[uv];
+	if (primIdP <= 0) {
+		devColorOut[id.xy] = float4(colorP, 1.0);
+		devVarianceOut[id.xy] = varP;
+		return;
+	}
+
+	float3 normP = _NormalTexture[uv].xyz;
+	float3 posP = _PositionTexture[uv].xyz;
+
+
+	float varFilterP = devFilteredVariance[uv];
+	float denom = sigLuminance * sqrt(max(varFilterP, 0.f)) + 1e-4f;
+
+	float3 sumColor = 0.f;
+	float sumVariance = 0.f;
+	float sumWeight = 0.f;
+	float sumWeight2 = 0.f;
+
+
+
+	for (int i = -2; i <= 2; i++) {
+		for (int j = -2; j <= 2; j++) {
+			int qx = id.x + j * step;
+			int qy = id.y + i * step;
+
+			if (qx >= width || qy >= height ||
+				qx < 0 || qy < 0) {
+				continue;
+			}
+
+            uint2 uv0 = uint2(qx, qy);
+
+			int primIdQ = _NormalTexture[uv0].w;
+			if (primIdQ <= 0 || primIdQ != primIdP) {
+				continue;
+			}
+			float3 normQ = _NormalTexture[uv0].xyz;
+			float3 colorQ = devColorIn[uv0].xyz;
+			float3 posQ = _PositionTexture[uv0].xyz;
+			float varQ = devVarainceIn[uv0];
+			//float varFilterQ = devFilteredVariance[uv0];
+
+			float distPos2 = distance(posP, posQ);
+			float wPos = (exp(-distPos2 / sigDepth) + 1e-4f);
+
+            //float wPos = min(exp(-distPos2 / (0.2 * 0.2)), 1.f);
+
+                // Weight for normal buffer
+			float wNorm = pow(max(dot(normP, normQ), 0.0), sigNormal);
+
+
+			//float denom = sigLuminance * sqrt(max(varFilterP, 0.f)) + 1e-4f;
+			float wColor = exp(-abs(luminance(colorP) - luminance(colorQ)) / denom);
+
+			float weight = wColor * wNorm * wPos * Gaussian5x5[i + 2][j + 2];
+			float weight2 = weight * weight;
+
+			sumColor += colorQ * weight;
+			sumVariance += varQ * weight2;
+			sumWeight += weight;
+			sumWeight2 += weight2;
+		}
+	}
+	devColorOut[idx] = float4((sumWeight < 1e-7f) ? colorP : sumColor / sumWeight , 1.0);
+	devVarianceOut[idx] = (sumWeight2 < 1e-7f) ? varP : sumVariance / sumWeight2;
+
+}

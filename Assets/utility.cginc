@@ -2,7 +2,7 @@ static const float EPSILON = 1e-8;
 static const float PI = 3.14159265f;
 static const float PiInv = 1.0/3.1415926f;
 
-const float2 Halton_2_3[8] =
+static const float2 Halton_2_3[8] =
 {
 	float2(0.0f, -1.0f / 3.0f),
 	float2(-1.0f / 2.0f, 1.0f / 3.0f),

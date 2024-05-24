@@ -1,16 +1,28 @@
 ﻿<Properties StartupConfiguration="{44D0DEE1-C27C-871F-CE8C-A7973FAF90E8}|">
-  <MonoDevelop.Ide.Workbench ActiveDocument="Assets/MyDefered.shader">
+  <MonoDevelop.Ide.Workbench ActiveDocument="Assets/Scripts/CameraController.cs">
     <Files>
-      <File FileName="Assets/RayTracingShader.compute" Line="1" Column="1" />
-      <File FileName="Assets/MyDefered.shader" Line="1" Column="1" />
+      <File FileName="Assets/RayTracingShader.compute" Line="745" Column="41" />
+      <File FileName="Assets/MyDefered.shader" />
+      <File FileName="Assets/Scripts/RayTracingController.cs" Line="461" Column="42" />
+      <File FileName="Assets/AddShader.shader" Line="38" Column="26" />
+      <File FileName="Assets/Denoiser.compute" Line="79" Column="51" />
+      <File FileName="Assets/WaveletFilter.compute" Line="110" Column="22" />
+      <File FileName="Assets/utility.cginc" Line="5" Column="31" />
+      <File FileName="Assets/Scripts/RayTraceableSphere.cs" Line="1" Column="1" />
+      <File FileName="Assets/TemporalAccumulate.compute" Line="53" Column="6" />
+      <File FileName="Assets/EstimateVariance.compute" Line="34" Column="1" />
+      <File FileName="Assets/FilterVariance.compute" Line="39" Column="13" />
+      <File FileName="Assets/LDRtoHDR.shader" Line="14" Column="10" />
+      <File FileName="Assets/Scripts/CameraController.cs" Line="1" Column="1" />
     </Files>
     <Pads>
       <Pad Id="ProjectPad">
         <State name="__root__">
           <Node name="Path_Tracing" expanded="True">
             <Node name="Assets" expanded="True">
-              <Node name="Scripts" expanded="True" />
-              <Node name="MyDefered.shader" selected="True" />
+              <Node name="Scripts" expanded="True">
+                <Node name="CameraController.cs" selected="True" />
+              </Node>
             </Node>
           </Node>
         </State>
@@ -19,7 +31,7 @@
   </MonoDevelop.Ide.Workbench>
   <MonoDevelop.Ide.DebuggingService.PinnedWatches />
   <MonoDevelop.Ide.Workspace ActiveConfiguration="Debug" />
-  <MonoDevelop.Ide.ItemProperties.Assembly-CSharp PreferredExecutionTarget="7a3a3b24-ed0a-4032-9d60-41d22230fe13" />
+  <MonoDevelop.Ide.ItemProperties.Assembly-CSharp PreferredExecutionTarget="6d3f7f5b-0a52-4858-9acb-4a3392aeb304" />
   <MonoDevelop.Ide.DebuggingService.Breakpoints>
     <BreakpointStore />
   </MonoDevelop.Ide.DebuggingService.Breakpoints>

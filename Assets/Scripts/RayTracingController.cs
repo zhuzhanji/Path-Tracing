@@ -7,12 +7,19 @@ public class RayTracingController : MonoBehaviour
     public int randomSeed;
     public ComputeShader RayTracingShader;
     public ComputeShader DenoiserShader;
+    public ComputeShader TemporalAccumulationShader;
+    public ComputeShader EstimateVarianceShader;
+    public ComputeShader FilterVarianceShader;
+    public ComputeShader EAWaveletFilterShader;
 
     public Texture[] SkyBoxTextures;
     private bool SkyboxEnabled = true;
 
-    private RenderTexture _target, _converged;
+    private RenderTexture _DevTmpTarget, _converged;
+    //, _convergedIndirect, _convergedDirect;
     private Camera _camera;
+    private Matrix4x4 _LastVP;
+
     private RenderTexture _pingpng;
 
     private RenderBuffer[] GBuffers;
@@ -26,10 +33,18 @@ public class RayTracingController : MonoBehaviour
     //public Mesh cubemesh;
     public Material cubematerial;
 
+    private RenderTexture[] devAccumColor;
+    private RenderTexture[] devAccumMoment;
+    private RenderTexture devVariance, devTmpVariance, devFilteredVariance;
 
     // image effect - screen shader
-    private uint _currentSample = 0;
+    private int _currentSample = 0;
+    private int _CurrentIndex = 0;
+    private bool _FirstFrame = true;
+
     private Material _addMaterial;
+    private Material _LDRtoHDR;
+    private Material _accumulateMat;
 
     public int MaxReflections = 4;
     public int maxReflectionsLocked = 4;
@@ -63,10 +78,10 @@ public class RayTracingController : MonoBehaviour
 
     private static GPU_BVH_Node[] _gpuBVHNodes = null;
     private static BVH_Node BVHRoot = null, selectedBVHNode = null;
-    private ComputeBuffer 
-        _vertexBuffer, 
+    private ComputeBuffer
+        _vertexBuffer,
         _normalBuffer,
-        _indexBuffer, 
+        _indexBuffer,
         _matIndicesBuffer,
         _triMeshMatBuffer,
         _BVH_Nodes_Buffer;
@@ -95,7 +110,7 @@ public class RayTracingController : MonoBehaviour
 
     private void RebuildMeshObjectBuffers()
     {
-        
+
         if (!_meshObjectsNeedRebuilding)
         {
             return;
@@ -104,10 +119,10 @@ public class RayTracingController : MonoBehaviour
         Debug.Log("rebuildng mesh objects");
         _meshObjectsNeedRebuilding = false;
         _currentSample = 0;
-        
+
         // Clear all lists
         ClearMeshLists();
-        
+
         // Loop over all objects and gather their data
         // foreach (RayTraceable obj in FindObjectsOfType<RayTraceable>())
         int objCounter = 0;
@@ -117,21 +132,21 @@ public class RayTracingController : MonoBehaviour
             _triMeshMats.Add(obj.GetMeshMaterial());
 
             Mesh mesh = obj.GetComponent<MeshFilter>().sharedMesh;
-            
+
             int firstVertex = _vertices.Count;
 
             // add triangles for BVH Construction
-                // convert localspace mesh vertices to world space
-            Vector3[] vertices = mesh.vertices.Select(v => obj.transform.TransformPoint(v)).ToArray();  
+            // convert localspace mesh vertices to world space
+            Vector3[] vertices = mesh.vertices.Select(v => obj.transform.TransformPoint(v)).ToArray();
             var indices = mesh.GetIndices(0);
             for (int i = 0; i < indices.Length; i += 3) {
                 _triangles.Add(new Triangle(
                     vertices[indices[i]],  // world space tri verts
-                    vertices[indices[i+1]],
-                    vertices[indices[i+2]],
+                    vertices[indices[i + 1]],
+                    vertices[indices[i + 2]],
                     indices[i] + firstVertex,  // index offsets
-                    indices[i+1] + firstVertex,
-                    indices[i+2] + firstVertex,
+                    indices[i + 1] + firstVertex,
+                    indices[i + 2] + firstVertex,
                     objCounter, objCounter, objCounter  // mesh indices
                 ));
             }
@@ -148,7 +163,7 @@ public class RayTracingController : MonoBehaviour
         // rebuild the BVH
         var before = System.DateTime.Now;
         BVHRoot = BVH_Node.BuildBVH(_triangles);
-        var after = System.DateTime.Now; 
+        var after = System.DateTime.Now;
         System.TimeSpan duration = after.Subtract(before);
 
         // copy the BVH to GPU-friendly BVH Nodes
@@ -156,7 +171,7 @@ public class RayTracingController : MonoBehaviour
         _gpuBVHNodes = new GPU_BVH_Node[BVHSize];
         int gpu_bvh_node_idx = 0;
         Create_GPU_BVH_Node(BVHRoot, ref gpu_bvh_node_idx);
-        Debug.Log(string.Format("BVH Build Stats\n time: {0}ms \n Layers: {1} \n #Nodes: {2}", 
+        Debug.Log(string.Format("BVH Build Stats\n time: {0}ms \n Layers: {1} \n #Nodes: {2}",
             duration.Milliseconds,
             BVHRoot.Depth(),
             BVHSize
@@ -210,7 +225,7 @@ public class RayTracingController : MonoBehaviour
                 _matIndices.AddRange(tri.GetMeshIndices());
             } // update indices buffer
 
-            _gpuBVHNodes[curIdx].rightOrOffset  = indices_offset;
+            _gpuBVHNodes[curIdx].rightOrOffset = indices_offset;
             _gpuBVHNodes[curIdx].leftOrCount = tris.Count * 3;  // 3 indices per triangle
             // Debug.Log(
             //     System.Convert.ToString(_gpuBVHNodes[curIdx].leftOrCount, 2)
@@ -222,10 +237,10 @@ public class RayTracingController : MonoBehaviour
             idx++;
             _gpuBVHNodes[curIdx].rightOrOffset = idx;
             Create_GPU_BVH_Node(node.right, ref idx);
-        }   
+        }
     }
 
-    void DFS_Traverse_GPU_BVH()  {  // to debug the infinite loop on compute shader
+    void DFS_Traverse_GPU_BVH() {  // to debug the infinite loop on compute shader
         int[] nodeStack = new int[64];  // stack for performing BVH Traversal
         int stackTop = 0;
 
@@ -236,23 +251,23 @@ public class RayTracingController : MonoBehaviour
             counter++;
             // if (counter > 1000) break;
             Debug.Log(string.Format("stackTop: {0}, _gpuBVHNodes[stackTop]: {1}, counter: {2}", stackTop, nodeStack[stackTop], counter));
-            
+
             GPU_BVH_Node node = _gpuBVHNodes[nodeStack[stackTop--]]; // pop top node off stack
 
             if (node.isLeaf == 1) { // leaf node
-                Debug.Log("found leaf at idx: " + (nodeStack[stackTop+1]));
+                Debug.Log("found leaf at idx: " + (nodeStack[stackTop + 1]));
 
                 int indexCount = node.leftOrCount;
                 int indexOff = node.rightOrOffset;
                 Debug.Log(string.Format("indexCount: {0}, indexOff: {1}", indexCount, indexOff));
             } else { // inner node
-                Debug.Log("found inner node leaf at idx: " + (nodeStack[stackTop+1]));
+                Debug.Log("found inner node leaf at idx: " + (nodeStack[stackTop + 1]));
                 int leftIndex = node.leftOrCount;
                 int rightIndex = node.rightOrOffset;
 
                 // push nodes onto stack. traverse left branches first
-                nodeStack[++stackTop] = rightIndex; 
-                nodeStack[++stackTop] = leftIndex; 
+                nodeStack[++stackTop] = rightIndex;
+                nodeStack[++stackTop] = leftIndex;
                 Debug.Log(string.Format("leftIndex: {0}, rightIndex: {1}", leftIndex, rightIndex));
             }
         }
@@ -280,7 +295,7 @@ public class RayTracingController : MonoBehaviour
         }
     }
     /*========End triangle mesh boilerplate========*/
-    
+
     private void ReleaseComputeBuffer(ref ComputeBuffer buf) {
         if (buf == null) return;
         buf.Release();
@@ -301,40 +316,19 @@ public class RayTracingController : MonoBehaviour
 
         // initialize screen shader material (for anti aliasing)
         _addMaterial = new Material(Shader.Find("Hidden/AddShader"));
+        _LDRtoHDR = new Material(Shader.Find("Hidden/LDRtoHDR"));
     }
 
     private void InitSpheres(bool randomize = false) {
         sphereList ??= new List<Sphere>();
-        //if (randomize) {
-        //    const int maxNumSpheres = 10;
-        //    (float, float) radiusRange = (5f, 20f);
-        //    const float posRange = 200f;
-        //
-        //
-        //    for (int i = 0; i < maxNumSpheres; i++)
-        //    {
-        //        bool shouldAdd = true;
-        //        Sphere s = Sphere.CreateRandomSphere(radiusRange, posRange);
-        //        // subtract spheres within center radius
-        //        if (new Vector2(s.center.x, s.center.z).magnitude < 75f)
-        //            continue;
-        //        foreach (var sphere in sphereList) // check intersection
-        //        {
-        //            if (Sphere.intersect(s, sphere)) {
-        //                shouldAdd = false;
-        //                break;
-        //            }
-        //        }
-        //
-        //        if (shouldAdd)
-        //            sphereList.Add(s);
-        //    }
-        //}
-        
 
+        int matid = 1;
         foreach (var sphere in FindObjectsOfType<RayTraceableSphere>())
         {
-            sphereList.Add(sphere.ToSphere());
+            var sp = sphere.ToSphere();
+            sp.matid = matid;
+            sphereList.Add(sp);
+            matid++;
         }
         Debug.Log("sphere number: " + (sphereList.Count));
         // copy sphere structs to compute buffer
@@ -373,7 +367,17 @@ public class RayTracingController : MonoBehaviour
     private void SetShaderParametersPerUpdate()
     {
         RayTracingShader.SetMatrix("_CameraToWorld", _camera.cameraToWorldMatrix);
+        // rng
+        RayTracingShader.SetFloat("_Seed", Random.value);
         RayTracingShader.SetMatrix("_CameraInverseProjection", _camera.projectionMatrix.inverse);
+        RayTracingShader.SetMatrix("_LastVP", _LastVP);
+
+        //var mat0 = GL.GetGPUProjectionMatrix(_camera.projectionMatrix, false);
+        //var mat1 = _camera.projectionMatrix;
+        //Debug.Log(mat0);
+        //Debug.Log(mat1);
+
+
         RayTracingShader.SetVector("_JitterOffset", new Vector2(Random.value, Random.value));
         RayTracingShader.SetInt("_MaxReflections", MaxReflections);
 
@@ -388,13 +392,12 @@ public class RayTracingController : MonoBehaviour
         RayTracingShader.SetVector("_GroundSpecular", ColorToVec3(GroundSpecular));
         RayTracingShader.SetVector("_GroundEmission", ColorToVec3(GroundEmission));
 
-        // rng
-        RayTracingShader.SetFloat("_Seed", Random.value);
+
 
         // tri mesh mats
-            // update every frame to allow for hot reloading of material
-        UpdateTriMeshMats();
-        
+        // update every frame to allow for hot reloading of material
+        //UpdateTriMeshMats();
+
     }
 
     // public void RandomizeTriMeshMats() {
@@ -412,53 +415,57 @@ public class RayTracingController : MonoBehaviour
     //相机绘制
     private void OnRenderImage(RenderTexture source, RenderTexture destination)
     {
-        {
-            Camera cam = Camera.current;
-            Graphics.SetRenderTarget(GBuffers, DepthTexure.depthBuffer);
-            //Shader.SetGlobalTexture(DepthTextureID, DepthTexure);
 
-            GL.Clear(true, true, Color.black, 1.0f);
-
-            //Material mtcube = cube.GetComponent<Renderer>().material;
-            cubematerial.SetPass(0);
-            //cubematerial.color = new Color(1, 0.0f, 0.0f);
-            foreach (var obj in _rayTracingObjects)
-            {
-                Graphics.DrawMeshNow(obj.GetComponent<MeshFilter>().sharedMesh, obj.GetComponent<Transform>().localToWorldMatrix);
-            }
-            foreach (var obj in FindObjectsOfType<RayTraceableSphere>())
-            {
-                Graphics.DrawMeshNow(obj.GetComponent<MeshFilter>().sharedMesh, obj.GetComponent<Transform>().localToWorldMatrix);
-            }
-
-            //Graphics.DrawMeshNow()
-            //Graphics.Blit(DepthTexure, destination);
-        }
+        //        {
+        //            Camera cam = Camera.current;
+        //            Graphics.SetRenderTarget(GBuffers, DepthTexure.depthBuffer);
+        //            //Shader.SetGlobalTexture(DepthTextureID, DepthTexure);
+        //
+        //            GL.Clear(true, true, Color.black, 1.0f);
+        //
+        //            //Material mtcube = cube.GetComponent<Renderer>().material;
+        //            cubematerial.SetPass(0);
+        //            //cubematerial.color = new Color(1, 0.0f, 0.0f);
+        //            //foreach (var obj in _rayTracingObjects)
+        //            //{
+        //            //    Graphics.DrawMeshNow(obj.GetComponent<MeshFilter>().sharedMesh, obj.GetComponent<Transform>().localToWorldMatrix);
+        //            //}
+        //            foreach (var obj in FindObjectsOfType<RayTraceableSphere>())
+        //            {
+        //                //obj.GetComponent<Renderer>().material.SetPass(0);
+        //                Graphics.DrawMeshNow(obj.GetComponent<MeshFilter>().sharedMesh, obj.GetComponent<Transform>().localToWorldMatrix);
+        //            }
+        //
+        //            //Graphics.DrawMeshNow()
+        //            //Graphics.Blit(DepthTexure, destination);
+        //        }
 
         {
             RebuildMeshObjectBuffers();  // populate meshobject compute buffers
             this.SetShaderParametersPerUpdate();
         }
 
+        //Ray tracing
 
-        InitRenderTexture(ref _converged);
         {
             this.Render(_converged);
-            //Graphics.Blit(_converged, destination);
+            //Graphics.Blit(_converged, destination, _LDRtoHDR);
             //return;
+
         }
 
-        {
-            //Graphics.Blit(_converged, destination);
-            this.Denoise(_converged, destination);
-        }
+        this.SVGFDenoise(_converged, destination);
+        //this.Denoise(_converged, destination);
+
+        _currentSample++;
+
     }
 
     private void OnPostRender()
     {
 
 
-        
+
     }
 
     //public void Trace() {
@@ -469,36 +476,136 @@ public class RayTracingController : MonoBehaviour
     private void Render(RenderTexture _converged)
     {
         // Make sure we have a current render target
-        InitRenderTexture(ref _target);
-        
+        InitRenderTexture(ref _DevTmpTarget);
 
         // Set the target and dispatch the compute shader
-        RayTracingShader.SetTexture(0, "Result", _target);
+        RayTracingShader.SetTexture(0, "Result", _DevTmpTarget);
+        RayTracingShader.SetTexture(0, "GbufferNormal",   _CurrentIndex == 0 ? GBufferTextures[0] : GBufferTextures[4]);
+        RayTracingShader.SetTexture(0, "GbufferPosition", _CurrentIndex == 0 ? GBufferTextures[1] : GBufferTextures[5]);
+        RayTracingShader.SetTexture(0, "GbufferAlbedo", GBufferTextures[2]);
+        RayTracingShader.SetTexture(0, "GbufferMotion", GBufferTextures[3]);
+
         RayTracingShader.SetInt("focal_length", focal_length);
         RayTracingShader.SetFloat("aperture_radius", aperture_radius);
         // spawn a thread group per 8x8 pixel region
-            // default thread group consists of 8x8 threads
+        // default thread group consists of 8x8 threads
         int threadGroupsX = Mathf.CeilToInt(Screen.width / 8.0f);
         int threadGroupsY = Mathf.CeilToInt(Screen.height / 8.0f);
         RayTracingShader.Dispatch(0, threadGroupsX, threadGroupsY, 1);
 
         // screen shader (anti aliasing via alpha blending jittered ray traces)
-        _addMaterial.SetFloat("_Sample", _currentSample++);
+        _addMaterial.SetFloat("_Sample", _currentSample);
 
         // Blit the result texture to _converged
-        Graphics.Blit(_target, _converged, _addMaterial);  // apply screen shader
+        Graphics.Blit(_DevTmpTarget, _converged, _addMaterial);  // apply screen shader
 
-        // Graphics.Blit(_target, _converged);
-        // use _converged because destination is not HDR texture
-        //
-        //Graphics.Blit(_converged, destination);
+        
+    }
+    private void TemporalAccumulation(RenderTexture src)
+    {
+        int threadGroupsX = Mathf.CeilToInt(Screen.width / 8.0f);
+        int threadGroupsY = Mathf.CeilToInt(Screen.height / 8.0f);
+
+        // Set the target and dispatch the compute shader
+
+        TemporalAccumulationShader.SetTexture(0, "devColorIn", src);
+        TemporalAccumulationShader.SetTexture(0, "_NormalTexture",     _CurrentIndex == 0 ? GBufferTextures[0] : GBufferTextures[4]);
+        TemporalAccumulationShader.SetTexture(0, "_LastNormalTexture", _CurrentIndex == 0 ? GBufferTextures[4] : GBufferTextures[0]);
+        TemporalAccumulationShader.SetTexture(0, "_PositionTexture",   _CurrentIndex == 0 ? GBufferTextures[1] : GBufferTextures[5]);
+        TemporalAccumulationShader.SetTexture(0, "_LastPositionTexture", _CurrentIndex == 0 ? GBufferTextures[5] : GBufferTextures[1]);
+     
+        TemporalAccumulationShader.SetTexture(0, "_MotionTexture", GBufferTextures[3]);
+
+        TemporalAccumulationShader.SetTexture(0, "devAccumColorIn", devAccumColor[_CurrentIndex]);
+        TemporalAccumulationShader.SetTexture(0, "devAccumColorOut", devAccumColor[_CurrentIndex ^ 1]);
+        //need to clear with 0
+        TemporalAccumulationShader.SetTexture(0, "devAccumMomentIn", devAccumMoment[_CurrentIndex]);
+        TemporalAccumulationShader.SetTexture(0, "devAccumMomentOut", devAccumMoment[_CurrentIndex ^ 1]);
+        TemporalAccumulationShader.SetBool("_FirstFrame", _FirstFrame);
+
+        TemporalAccumulationShader.Dispatch(0, threadGroupsX, threadGroupsY, 1);
+
+
+    }
+
+    private void EstimateVariance()
+    {
+        int threadGroupsX = Mathf.CeilToInt(Screen.width / 8.0f);
+        int threadGroupsY = Mathf.CeilToInt(Screen.height / 8.0f);
+
+        EstimateVarianceShader.SetTexture(0, "devMoment", devAccumMoment[_CurrentIndex ^ 1]);
+        EstimateVarianceShader.SetTexture(0, "devVariance", devVariance);
+
+        EstimateVarianceShader.Dispatch(0, threadGroupsX, threadGroupsY, 1);
+    }
+
+    private void FilterVariance(RenderTexture devVarianceIn, RenderTexture devVarianceOut)
+    {
+        int threadGroupsX = Mathf.CeilToInt(Screen.width / 8.0f);
+        int threadGroupsY = Mathf.CeilToInt(Screen.height / 8.0f);
+        FilterVarianceShader.SetTexture(0, "devVarianceIn", devVarianceIn);
+        FilterVarianceShader.SetTexture(0, "devFilteredVariance", devVarianceOut);
+
+        FilterVarianceShader.Dispatch(0, threadGroupsX, threadGroupsY, 1);
+    }
+
+    private void EAWaveletFilter(RenderTexture devColorOut, RenderTexture devColorIn,
+        RenderTexture devVarianceOut, RenderTexture devVarianceIn, RenderTexture devFilteredVar, int level)
+    {
+        int threadGroupsX = Mathf.CeilToInt(Screen.width / 8.0f);
+        int threadGroupsY = Mathf.CeilToInt(Screen.height / 8.0f);
+
+        EAWaveletFilterShader.SetTexture(0, "devColorIn", devColorIn);
+        EAWaveletFilterShader.SetTexture(0, "devVarainceIn", devVarianceIn);
+        EAWaveletFilterShader.SetTexture(0, "devFilteredVariance", devFilteredVar);
+        EAWaveletFilterShader.SetTexture(0, "_NormalTexture", _CurrentIndex == 0 ? GBufferTextures[0] : GBufferTextures[4]);
+        EAWaveletFilterShader.SetTexture(0, "_PositionTexture", _CurrentIndex == 0 ? GBufferTextures[1] : GBufferTextures[5]);
+        EAWaveletFilterShader.SetTexture(0, "devColorOut", devColorOut);
+        EAWaveletFilterShader.SetTexture(0, "devVarianceOut", devVarianceOut);
+        EAWaveletFilterShader.SetInt("level", level);
+
+        EAWaveletFilterShader.Dispatch(0, threadGroupsX, threadGroupsY, 1);
+    }
+
+    private void SVGFDenoise(RenderTexture src, RenderTexture dst)
+    {
+        InitRenderTexture(ref _pingpng);
+
+        this.TemporalAccumulation(src);
+        
+        this.EstimateVariance();
+
+        this.FilterVariance(devVariance, devFilteredVariance);
+        this.EAWaveletFilter(_DevTmpTarget, devAccumColor[_CurrentIndex ^ 1], devTmpVariance, devVariance, devFilteredVariance, 0);
+        Graphics.Blit(_DevTmpTarget, devAccumColor[_CurrentIndex ^ 1]);
+
+        this.FilterVariance(devTmpVariance, devFilteredVariance);
+        this.EAWaveletFilter(_DevTmpTarget, devAccumColor[_CurrentIndex ^ 1], devVariance, devTmpVariance, devFilteredVariance, 1);
+        //Graphics.Blit(devTmpVariance, devVariance);
+        
+        this.FilterVariance(devVariance, devFilteredVariance);
+        this.EAWaveletFilter(_pingpng, _DevTmpTarget, devTmpVariance, devVariance, devFilteredVariance, 2);
+        //Graphics.Blit(devTmpVariance, devVariance);
+        
+        this.FilterVariance(devTmpVariance, devFilteredVariance);
+        this.EAWaveletFilter(_DevTmpTarget, _pingpng, devVariance, devTmpVariance, devFilteredVariance, 3);
+        //Graphics.Blit(devTmpVariance, devVariance);
+        
+        this.FilterVariance(devVariance, devFilteredVariance);
+        this.EAWaveletFilter(_pingpng, _DevTmpTarget, devTmpVariance, devVariance, devFilteredVariance, 4);
+
+        Graphics.Blit(_pingpng, dst, _LDRtoHDR);
+
+        this._LastVP = this._camera.projectionMatrix * this._camera.worldToCameraMatrix;
+        this._FirstFrame = false;
+        this._CurrentIndex = this._CurrentIndex ^ 1;
     }
 
     private void Denoise(RenderTexture src, RenderTexture dst)
     {
 
         InitRenderTexture(ref _pingpng);
-        InitRenderTexture(ref _target);
+
         // spawn a thread group per 8x8 pixel region
         // default thread group consists of 8x8 threads
         int threadGroupsX = Mathf.CeilToInt(Screen.width / 8.0f);
@@ -516,11 +623,11 @@ public class RayTracingController : MonoBehaviour
         DenoiserShader.SetTexture(0, "_RayTracingTexture", _pingpng);
         DenoiserShader.SetTexture(0, "_NormalTexture", GBufferTextures[0]);
         DenoiserShader.SetTexture(0, "_PositionTexture", GBufferTextures[1]);
-        DenoiserShader.SetTexture(0, "Result", _target);
+        DenoiserShader.SetTexture(0, "Result", _DevTmpTarget);
         DenoiserShader.SetInt("level", 1);
         DenoiserShader.Dispatch(0, threadGroupsX, threadGroupsY, 1);
-        /*
-        DenoiserShader.SetTexture(0, "_RayTracingTexture", _target);
+        
+        DenoiserShader.SetTexture(0, "_RayTracingTexture", _DevTmpTarget);
         DenoiserShader.SetTexture(0, "_NormalTexture", GBufferTextures[0]);
         DenoiserShader.SetTexture(0, "_PositionTexture", GBufferTextures[1]);
         DenoiserShader.SetTexture(0, "Result", _pingpng);
@@ -530,21 +637,21 @@ public class RayTracingController : MonoBehaviour
         DenoiserShader.SetTexture(0, "_RayTracingTexture", _pingpng);
         DenoiserShader.SetTexture(0, "_NormalTexture", GBufferTextures[0]);
         DenoiserShader.SetTexture(0, "_PositionTexture", GBufferTextures[1]);
-        DenoiserShader.SetTexture(0, "Result", _target);
+        DenoiserShader.SetTexture(0, "Result", _DevTmpTarget);
         DenoiserShader.SetInt("level", 3);
         DenoiserShader.Dispatch(0, threadGroupsX, threadGroupsY, 1);
 
-        DenoiserShader.SetTexture(0, "_RayTracingTexture", _target);
+        DenoiserShader.SetTexture(0, "_RayTracingTexture", _DevTmpTarget);
         DenoiserShader.SetTexture(0, "_NormalTexture", GBufferTextures[0]);
         DenoiserShader.SetTexture(0, "_PositionTexture", GBufferTextures[1]);
         DenoiserShader.SetTexture(0, "Result", _pingpng);
         DenoiserShader.SetInt("level", 4);
         DenoiserShader.Dispatch(0, threadGroupsX, threadGroupsY, 1);
-        */
-        Graphics.Blit(_target, dst);
+        
+        Graphics.Blit(_pingpng, dst);
     }
 
-    private void InitRenderTexture(ref RenderTexture tex)
+    private void InitRenderTexture(ref RenderTexture tex, RenderTextureFormat ft = RenderTextureFormat.ARGBFloat)
     {
         if (tex == null || tex.width != Screen.width || tex.height != Screen.height)
         {
@@ -554,44 +661,73 @@ public class RayTracingController : MonoBehaviour
 
             // Get a render target for Ray Tracing
             tex = new RenderTexture(Screen.width, Screen.height, 0,
-                RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear);
+                ft, RenderTextureReadWrite.Linear);
             tex.enableRandomWrite = true;
             tex.Create();
-
-            // for screen shader
-            _currentSample = 0;
         }
     }
 
     void Start() {
+
         GBufferTextures = new RenderTexture[]
         {
+            //normal + matid
             new RenderTexture(Screen.width, Screen.height, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear),
+            //position
             new RenderTexture(Screen.width, Screen.height, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear),
-            //new RenderTexture(Screen.width, Screen.height, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear),
+            //albedo
+            new RenderTexture(Screen.width, Screen.height, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear),
+            //motion
+            new RenderTexture(Screen.width, Screen.height, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear),
+            //direct
             //new RenderTexture(Screen.width, Screen.height, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear)
+
+            //last normal + matid 
+            new RenderTexture(Screen.width, Screen.height, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear),
+            //position
+            new RenderTexture(Screen.width, Screen.height, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear),
         };
+
+
+
         GBuffers = new RenderBuffer[GBufferTextures.Length];
         for (int i = 0; i < GBufferTextures.Length; i++)
         {
+            GBufferTextures[i].enableRandomWrite = true;
             GBuffers[i] = GBufferTextures[i].colorBuffer;
         }
         GBufferIDs = new int[]
         {
             Shader.PropertyToID("_GBuffer0"),
             Shader.PropertyToID("_GBuffer1"),
-            //Shader.PropertyToID("_GBuffer2"),
+            Shader.PropertyToID("_GBuffer2"),
             //Shader.PropertyToID("_GBuffer3"),
         };
 
-        DepthTexure = new RenderTexture(Screen.width, Screen.height, 24, RenderTextureFormat.Depth, RenderTextureReadWrite.Linear);
+        devAccumColor = new RenderTexture[] { null, null };
+        devAccumMoment = new RenderTexture[] { null, null };
+        for(int i = 0; i < 2; i++)
+        {
+            InitRenderTexture(ref devAccumColor[i]);
+            InitRenderTexture(ref devAccumMoment[i]);
+        }
+        InitRenderTexture(ref devVariance, RenderTextureFormat.RFloat);
+        InitRenderTexture(ref devFilteredVariance, RenderTextureFormat.RFloat);
+        InitRenderTexture(ref devTmpVariance, RenderTextureFormat.RFloat);
+
+        InitRenderTexture(ref _converged);
+
+        //DepthTexure = new RenderTexture(Screen.width, Screen.height, 24, RenderTextureFormat.Depth, RenderTextureReadWrite.Linear);
 
         RebuildMeshObjectBuffers();  // populate meshobject compute buffers
         selectedBVHNode = BVHRoot;
 
         UpdateSkybox(0);
-        RayTracingShader.SetInt("_SkyboxEnabled", SkyboxEnabled ? 1 : 0);    
-         
+        RayTracingShader.SetInt("_SkyboxEnabled", SkyboxEnabled ? 1 : 0);
+
+
+
+
     }
 
     private void ToggleSkybox() {

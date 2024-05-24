@@ -1,0 +1,102 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+//Texture2D<float4> devColorIn;
+//SamplerState sampler_devColorIn;
+RWTexture2D<float4> devColorIn;
+
+//Texture2D<float4> devAccumColorIn;
+//SamplerState sampler_devAccumColorIn;
+RWTexture2D<float4> devAccumColorIn;
+
+//Texture2D<float4> devAccumMomentIn;
+//SamplerState sampler_devAccumMomentIn;
+RWTexture2D<float4> devAccumMomentIn;
+
+// GBuffer
+//Texture2D<float4> _NormalTexture;
+//SamplerState sampler_NormalTexture;
+RWTexture2D<float4> _NormalTexture;
+
+//Texture2D<float4> _LastNormalTexture;
+//SamplerState sampler_LastNormalTexture;
+RWTexture2D<float4> _LastNormalTexture;
+
+//Texture2D<float4> _PositionTexture;
+//SamplerState sampler_PositionTexture;
+RWTexture2D<float4> _PositionTexture;
+
+//Texture2D<float4> _LastPositionTexture;
+//SamplerState sampler_LastPositionTexture;
+RWTexture2D<float4> _LastPositionTexture;
+
+
+//Texture2D<float4> _MotionTexture;
+//SamplerState sampler_MotionTexture;
+RWTexture2D<float4> _MotionTexture;
+
+//output
+RWTexture2D<float4> devAccumColorOut;
+RWTexture2D<float4> devAccumMomentOut;
+
+bool _FirstFrame;
+
+
+float luminance(float3 color) {
+    return dot(color, float3(.2126f, .7152f, .0722f));
+}
+
+
+[numthreads(8,8,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    uint2 pixel = id.xy;
+	uint width, height;
+    devAccumColorOut.GetDimensions(width, height);
+
+	if (id.x >= width || id.y >= height) {
+		return;
+	}
+
+	uint2 lastUV = _MotionTexture[id.xy].xy * uint2(width, height);
+
+    float4 norm = _NormalTexture[id.xy];
+    float3 position = _PositionTexture[id.xy];
+	
+	float4 lastNorm = _LastNormalTexture[lastUV];
+    float3 lastPos =  _LastPositionTexture[lastUV].xyz;
+
+	float3 lastColor = devAccumColorIn[lastUV].xyz;
+	float3 lastMoment = devAccumMomentIn[lastUV].xyz;
+
+
+	bool diff = _FirstFrame;
+	if (abs(dot(norm.xyz, lastNorm.xyz)) < .1f) {
+		diff = true;
+	}
+	//matid
+	if(abs(norm.w - lastNorm.w) > 0.1){
+		diff = true;
+    }
+
+	float3 color = devColorIn[pixel];
+
+	float lum = luminance(color);
+
+	float3 accumColor;
+	float3 accumMoment;
+
+	if (diff) {
+		accumColor = color;
+		accumMoment = float3( lum, lum * lum, 0.f );
+	}
+	else {
+		const float Alpha = .2f;
+		accumColor = lerp(lastColor, color, Alpha);
+		accumMoment = float3(lerp(lastMoment.rg, float2(lum, lum * lum), Alpha), lastMoment.b + 1.f);
+	}
+
+
+	devAccumColorOut[pixel] = float4(accumColor, 1.0);
+	devAccumMomentOut[pixel] = float4(accumMoment, int(diff));
+}

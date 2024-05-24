@@ -1,0 +1,50 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+//Texture2D<float4> devMoment;
+//SamplerState sampler_devMoment;
+RWTexture2D<float4> devMoment;
+// Create a RenderTexture with enableRandomWrite flag and set it
+// with cs.SetTexture
+RWTexture2D<float> devVariance;
+
+[numthreads(8,8,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    int2 idx = id.xy;
+
+	uint width, height;
+    devMoment.GetDimensions(width, height);
+	if (id.x >= width || id.y >= height) {
+		return;
+	}
+
+	float3 m = devMoment[idx].xyz;
+	if (m.z > 3.5f) {
+		// Temporal variance
+		devVariance[idx] = m.y - m.x * m.x;
+	}
+	else {
+		// Spatial variance
+		float2 sumMoment = 0.f;
+		int numPixel = 0;
+
+		for (int i = -1; i <= 1; i++) {
+			for (int j = -1; j <= 1; j++) {
+				int qx = id.x + j;
+				int qy = id.y + i;
+
+				if (qx >= width || qy >= height ||
+					qx < 0 || qy < 0) {
+					continue;
+				}
+				float2 uv0 = float2(qx, qy);
+
+				sumMoment += devMoment[uv0].xy;
+				numPixel++;
+			}
+		}
+		sumMoment /= numPixel;
+		devVariance[idx] = sumMoment.y - sumMoment.x * sumMoment.x;
+	}
+}

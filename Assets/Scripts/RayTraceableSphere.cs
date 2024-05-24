@@ -19,7 +19,9 @@ public class RayTraceableSphere : MonoBehaviour
             emission = (Vector3)(Vector4)emission,
             roughness = (float)roughness,
             metallic = (float)metallic,
-            type = (int)type
+            type = (int)type,
+            matid = -1
+
         };
     }
 }

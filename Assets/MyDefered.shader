@@ -25,7 +25,7 @@ Shader "Unlit/MyDefered"
             {
                 float4 worldpos: TEXCOORD0;
                 float4 normal: TEXCOORD1;
-                UNITY_FOG_COORDS(1)
+                //UNITY_FOG_COORDS(1)
                 float4 vertex : SV_POSITION;
             };
             struct f2o
@@ -41,14 +41,14 @@ Shader "Unlit/MyDefered"
                 o.vertex = UnityObjectToClipPos(v.vertex);
                 o.worldpos = mul(unity_ObjectToWorld, v.vertex);
                 o.normal = float4(UnityObjectToWorldNormal(v.normal), 1.0);
-                UNITY_TRANSFER_FOG(o,o.vertex);
+                //UNITY_TRANSFER_FOG(o,o.vertex);
                 return o;
             }
 
             f2o frag (v2f i)
             {
                 // apply fog
-                UNITY_APPLY_FOG(i.fogCoord, col);
+                //UNITY_APPLY_FOG(i.fogCoord, col);
                 f2o output;
                 output.color0 = float4((i.worldpos.xyz) , 1.0);
                 output.color1 = float4(((i.normal.xyz) + 1.0) * 0.5, 1.0);

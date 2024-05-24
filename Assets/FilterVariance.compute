@@ -1,0 +1,47 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+//Texture2D<float> devVarianceIn;
+//SamplerState sampler_devVarianceIn;
+
+RWTexture2D<float> devVarianceIn;
+
+RWTexture2D<float> devFilteredVariance;
+
+static const float Gaussian3x3[3][3] = {
+	{ .075f, .124f, .075f },
+	{ .124f, .204f, .124f },
+	{ .075f, .124f, .075f }
+};
+
+[numthreads(8,8,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    int2 idx = id.xy;
+
+	uint width, height;
+    devFilteredVariance.GetDimensions(width, height);
+	if (idx.x >= width || idx.y >= height) {
+		return;
+	}
+
+	float sum = 0.f;
+	float sumWeight = 0.f;
+
+	for (int i = -1; i <= 1; i++) {
+		for (int j = -1; j <= 1; j++) {
+			int qx = id.x + j;
+			int qy = id.y + i;
+
+			if (qx >= width || qy >= height || qx < 0 || qy < 0) {
+				continue;
+			}
+			uint2 uv0 = uint2((qx), (qy));
+
+			float weight = Gaussian3x3[i + 1][j + 1];
+			sum += devVarianceIn[uv0] * weight;
+			sumWeight += weight;
+		}
+	}
+	devFilteredVariance[idx] = sum / sumWeight;
+}
