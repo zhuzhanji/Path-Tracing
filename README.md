@@ -1,13 +1,13 @@
 # Features:
 
-* Path Tracing
+* Path Tracing (1 spp to 100 spp)
 
 * Monte Carlo Importance Sampling, Russian Roulette
-  
-* Simple TAA
 
 * Edge-avoiding À-Trous Wavelet Filter
 * Spatiotemporal Variance-Guided Filter
+
+* Simple TAA
 
 * Field of Depth
 
@@ -22,9 +22,12 @@
 
 # Demo
 
-<img width="807" alt="Screenshot 2024-05-14 at 08 13 27" src="https://github.com/zhuzhanji/Path-Tracing/assets/37281560/088376d9-ea58-4695-9885-746e9e8c8b62">
+<img width="772" alt="image" src="https://github.com/zhuzhanji/Path-Tracing/assets/37281560/7799cd0b-d549-41db-9bba-a9d07c80b351">
+
 
 <img width="809" alt="Screenshot 2024-05-14 at 08 15 10" src="https://github.com/zhuzhanji/Path-Tracing/assets/37281560/c6f86c87-0f72-4f29-992b-c8f192dc5eb7">
+
+
 
 ## With depth of filed on.
 
