@@ -1,6 +1,6 @@
 # Features:
 
-* Path Tracing (1 spp to 100 spp)
+* Path Tracing (1 spp to 32 spp)
 
 * Monte Carlo Importance Sampling, Russian Roulette
 
