@@ -1,6 +1,6 @@
 # Features:
 
-* Path Tracing (1 spp to 32 spp)
+* Path Tracing
 
 * Monte Carlo Importance Sampling, Russian Roulette
 
@@ -19,6 +19,8 @@
 
 * Skybox
 * Unity
+
+*Adjustable SPP/frame ((1 spp to 32 spp per frame)
 
 # Demo
 
