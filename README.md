@@ -21,7 +21,7 @@
 * Skybox
 * Unity
 
-*Adjustable SPP/frame ((1 spp to 32 spp per frame)
+* Adjustable SPP/frame ((1 spp to 32 spp per frame)
 
 # Demo
 
