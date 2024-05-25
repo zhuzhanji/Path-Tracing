@@ -18,7 +18,7 @@ float4x4 _LastVP;
 Texture2D<float4> _SkyboxTexture;
 SamplerState sampler_SkyboxTexture;
 int _SkyboxEnabled = 1;
-
+bool need_gbuffer;
 
 sampler2D _ApertureMaskTex;
 
@@ -132,6 +132,9 @@ struct RayHit
     float4 sampleDisneyBRDF(inout Ray ray) {
         float3 v = -ray.direction;
         float3 n = normal;
+        float4 brdf;
+
+
         float3 l;
         float alpha = pow(roughness, 2.);
 
@@ -143,6 +146,8 @@ struct RayHit
         if (h.z < 0.0)
             h = -h;
         h = toWorld(t,b,n,h);
+
+
 
         // fresnel
         //The Fresnel equation describes the ratio of light that gets reflected over the light that gets refracted
@@ -158,16 +163,18 @@ struct RayHit
         float invW = 1./(diffW + specW);
         diffW *= invW;
         specW *= invW;
-        float4 brdf;
+
+
         float rnd = rand();
-        if (rnd < diffW) // diffuse
+        if(rnd < diffW) // diffuse
         {
+
             l = SampleHemisphereCosine(n);
             h = normalize(l+v);
             
             float NoL = dot(n,l);
             float NoV = dot(n,v);
-            if ( NoL <= 0. || NoV <= 0. ) { return float4(0.,0,0,0); }
+            if ( NoL <= 0. || NoV <= 0. ) {  return float4(0.,0,0,0); }
             float LoH = dot(l,h);
             //cos(theta) / PI
             float pdf = NoL/PI;
@@ -197,6 +204,7 @@ struct RayHit
     }
     float4 samplePhong(inout Ray ray)
     {
+
         float4 brdf = float4(0.0, 0.0, 0.0, 0.0);
         //grey scale
         float specChance = energy(specular);
@@ -227,6 +235,7 @@ struct RayHit
         {
             ray.energy = 0.0f;
         }
+
         return brdf;
     }
 
@@ -237,7 +246,7 @@ struct RayHit
         float probability;
         float3 normal2 = normal;
         float ior = 0.9;
-    
+
         float cos = clamp(dot(ray.direction, normal), -1.f, 1.f);
         
         if (cos >= 0.f) {
@@ -434,6 +443,8 @@ void IntersectGroundPlane(Ray ray, inout RayHit bestHit)
         bestHit.albedo = _GroundAlbedo;
         bestHit.specular = _GroundSpecular;
         bestHit.emission = _GroundEmission;
+        bestHit.metallic = 0.2;
+        bestHit.roughness = 0.8;
         bestHit.matid    = 1000;
     }
 }
@@ -489,37 +500,38 @@ bool Trisection(Ray ray, float3 v0, float3 v1, float3 v2,
     return false;
 }
 
-void IntersectAllTris(Ray ray, inout RayHit bestHit) {
-    for (int i = 0; i < _NumIndices; i += 3) {
-        float3
-            v0 = _Vertices[_Indices[i]],
-            v1 = _Vertices[_Indices[i+1]],
-            v2 = _Vertices[_Indices[i+2]],
-            n0 = _Normals[_Indices[i]],
-            n1 = _Normals[_Indices[i+1]],
-            n2 = _Normals[_Indices[i+2]];
-            
-
-        Trisect tri = CreateTrisect();
-        if (Trisection(ray, v0, v1, v2, tri)) {
-            if (tri.t > bestHit.distance)
-                continue;
-
-            bestHit.distance = tri.t;
-            bestHit.position = ray.origin + tri.t * ray.direction;
-
-            // TODO: use UV to interpolate normals
-            float w = 1 - tri.u - tri.v;
-            bestHit.normal = (tri.u*n1) + (tri.v * n2) + (w * n0);
-            
-            // get mesh mat
-            TriMeshMaterial triMat = _TriMeshMats[_MatIndices[i]];
-            bestHit.albedo = triMat.albedo;
-            bestHit.specular = triMat.specular;
-            bestHit.emission = triMat.emission;
-        }
-    }
-}
+//void IntersectAllTris(Ray ray, inout RayHit bestHit) {
+//    for (int i = 0; i < _NumIndices; i += 3) {
+//        float3
+//            v0 = _Vertices[_Indices[i]],
+//            v1 = _Vertices[_Indices[i+1]],
+//            v2 = _Vertices[_Indices[i+2]],
+//            n0 = _Normals[_Indices[i]],
+//            n1 = _Normals[_Indices[i+1]],
+//            n2 = _Normals[_Indices[i+2]];
+//            
+//
+//        Trisect tri = CreateTrisect();
+//        if (Trisection(ray, v0, v1, v2, tri)) {
+//            if (tri.t > bestHit.distance)
+//                continue;
+//
+//            bestHit.distance = tri.t;
+//            bestHit.position = ray.origin + tri.t * ray.direction;
+//
+//            // TODO: use UV to interpolate normals
+//            float w = 1 - tri.u - tri.v;
+//            bestHit.normal = (tri.u*n1) + (tri.v * n2) + (w * n0);
+//            
+//            // get mesh mat
+//            TriMeshMaterial triMat = _TriMeshMats[_MatIndices[i]];
+//            bestHit.albedo = triMat.albedo;
+//            bestHit.specular = triMat.specular;
+//            bestHit.emission = triMat.emission;
+//            bestHit.type = triMat.type;
+//        }
+//    }
+//}
 
 // ref: https://www.scratchapixel.com/lessons/3d-basic-rendering/minimal-ray-tracer-rendering-simple-shapes/ray-box-intersection
 bool IntersectAABB(Ray r, float3 bot, float3 top, inout float2 t) {
@@ -606,6 +618,9 @@ void IntersectBVH(Ray ray, inout RayHit bestHit) {
                         bestHit.specular = triMat.specular;
                         bestHit.emission = triMat.emission;
                         bestHit.matid = 2000;
+                        bestHit.type = triMat.type;
+                        bestHit.metallic = 0.8;
+                        bestHit.roughness = 0.2;
                     }
                 }
             }
@@ -625,14 +640,14 @@ void IntersectBVH(Ray ray, inout RayHit bestHit) {
 RayHit Trace(Ray ray, int count) 
 {
     RayHit bestHit = CreateRayHit();
-    IntersectGroundPlane(ray, bestHit);
+    //IntersectGroundPlane(ray, bestHit);
 
     // loop over all spheres
     for (int i = 0; i < _NumSpheres; i++)
         IntersectSphere(ray, bestHit, _Spheres[i]);
 
     IntersectBVH(ray, bestHit);
-    if(count == 0 && bestHit.distance < 1.#INF){
+    if(need_gbuffer && count == 0 && bestHit.distance < 1.#INF){
         uint width, height;
         Result.GetDimensions(width, height);
         float4 lastScreenPos = mul(_LastVP, float4(bestHit.position, 1.0));
@@ -668,6 +683,7 @@ float3 Shade(inout Ray ray, inout RayHit hit)
             brdf = hit.sampleDielectric(ray);
             break;
         default:
+            ray.energy *= 0;
             return float4(0.,0,0,0);
         }
 
@@ -685,13 +701,14 @@ float3 Shade(inout Ray ray, inout RayHit hit)
     {
         // no hit, set energy to 0
         ray.energy = float3(0.0f, 0.0f, 0.0f);
+//return float3(1.0,1.0,1.0);
         // darkness
         if (_SkyboxEnabled == 0)
             return float3(0, 0, 0);
         // Sample the skybox and write it
         float theta = acos(ray.direction.y) / -PI;
         float phi = atan2(ray.direction.x, -ray.direction.z) / -PI * 0.5f;
-        return _SkyboxTexture.SampleLevel(sampler_SkyboxTexture, float2(phi, theta), 0).xyz;
+        return (_SkyboxTexture.SampleLevel(sampler_SkyboxTexture, float2(phi, theta), 0).xyz);
     }
 }
 
@@ -700,10 +717,13 @@ float3 Shade(inout Ray ray, inout RayHit hit)
 void CSMain (uint3 id : SV_DispatchThreadID)
 {
     pixel = id.xy;
-    GbufferPosition[id.xy] = float4(0, 0, 0, 0);
-    GbufferNormal[id.xy] = float4(0, 0, 0, 0);
-    GbufferAlbedo[id.xy] = float4(0, 0, 0, 0);
-    GbufferMotion[pixel] = float4(0, 0, 0, 0);
+    if(need_gbuffer)
+    {
+        GbufferPosition[id.xy] = float4(0, 0, 0, 0);
+        GbufferNormal[id.xy] = float4(0, 0, 0, 0);
+        GbufferAlbedo[id.xy] = float4(0, 0, 0, 0);
+        GbufferMotion[pixel] = float4(0, 0, 0, 0);
+    }
 
     // Get the dimensions of the RenderTexture
     uint width, height;
@@ -744,7 +764,6 @@ void CSMain (uint3 id : SV_DispatchThreadID)
     //IndirectLighting[id.xy] = float4(indirect, 1);
     //DirectLighting[id.xy] = float4(direct, 1);
 
-    //result = clamp(result, 0.0, 1.0);
     //HDR to LDR
     result = result / (result + 1.0);
     Result[id.xy] = float4(result, 1);

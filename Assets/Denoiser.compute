@@ -19,7 +19,9 @@ RWTexture2D<float4> _PositionTexture;
 RWTexture2D<float4> _RayTracingTexture;
 
 int level;
-
+float p_phi;
+float n_phi;
+float c_phi;
 
 float3 ewaDenoiser(uint2 uv0, float2 resolution)
 {
@@ -31,9 +33,7 @@ float3 ewaDenoiser(uint2 uv0, float2 resolution)
 	        { .0133f, .0596f, .0983f, .0596f, .0133f },
 	        { .0030f, .0133f, .0219f, .0133f, .0030f }
         };
-        float p_phi = 0.2f;
-        float n_phi = 0.35f;
-        float c_phi = 0.45f;
+
 
         float3 sum = float3(0.f, 0.f, 0.f);
         float3 c_val = _RayTracingTexture[uv0].xyz;
@@ -63,20 +63,30 @@ float3 ewaDenoiser(uint2 uv0, float2 resolution)
 
                 // Color of neighbor
                 float3 c_tmp = _RayTracingTexture[uv].xyz;
-
-                // Weight for rt buffer
-                float dist = distance(c_val, c_tmp);
-                float c_w = min(exp(-dist / (c_phi * c_phi)), 1.f);
-
-                // Weight for normal buffer
+         //
+         //       // Weight for rt buffer
+         //       float dist = distance(c_val, c_tmp);
+         //       float c_w = min(exp(-dist / (c_phi * c_phi)), 1.f);
+         //
+         //       // Weight for normal buffer
                 float3 n_tmp = _NormalTexture[uv].xyz;
-                dist = max(distance(n_val, n_tmp) / (step_width * step_width), 0.f);
-                float n_w = min(exp(-dist / (n_phi * n_phi)), 1.f);
-
-                // Weight for position buffer
+         //       dist = max(distance(n_val, n_tmp) / (step_width * step_width), 0.f);
+         //       float n_w = min(exp(-dist / (n_phi * n_phi)), 1.f);
+         //
+         //       // Weight for position buffer
                 float3 p_tmp = _PositionTexture[uv].xyz;
-                dist = distance(p_val, p_tmp);
-                float p_w = min(exp(-dist / (p_phi * p_phi)), 1.f);
+         //       dist = distance(p_val, p_tmp);
+         //       float p_w = min(exp(-dist / (p_phi * p_phi)), 1.f);
+         //
+			float dist = dot(c_val - c_tmp, c_val - c_tmp);
+			float c_w = min(1.f, exp(-dist / c_phi));
+
+			dist  = dot(n_val - n_tmp, n_val - n_tmp) / (step_width * step_width);
+			float n_w = min(1.f, exp(-dist / n_phi));
+
+			dist = dot(p_val - p_tmp, p_val - p_tmp);
+			float p_w = min(1.f, exp(-dist / p_phi));
+
 
                 // Filter value at corresponding position
                 float f_val = Gaussian55[u+2][v+2];
@@ -86,12 +96,12 @@ float3 ewaDenoiser(uint2 uv0, float2 resolution)
                 cum_w += f_val * c_w * n_w * p_w;
 
                 // Filter without edge-avoiding
-                //sum += c_tmp * f_val;
-                //cum_w += f_val;
+                //sum += c_tmp * f_val * c_w* p_w;
+                //cum_w += f_val * c_w* p_w;
             }
         }
 
-        return sum / cum_w;
+        return cum_w < 1e-7 ? c_val : sum / cum_w;
 }
 
 

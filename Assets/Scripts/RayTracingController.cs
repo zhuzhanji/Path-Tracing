@@ -24,7 +24,7 @@ public class RayTracingController : MonoBehaviour
 
     private RenderBuffer[] GBuffers;
     private RenderTexture[] GBufferTextures;
-    private int[] GBufferIDs;
+
     private RenderTexture DepthTexure;
     private int DepthTextureID = Shader.PropertyToID("_DepthTexture");
     //self defined pipeline test
@@ -38,7 +38,7 @@ public class RayTracingController : MonoBehaviour
     private RenderTexture devVariance, devTmpVariance, devFilteredVariance;
 
     // image effect - screen shader
-    private int _currentSample = 0;
+    private int _CurrentFrame = 0;
     private int _CurrentIndex = 0;
     private bool _FirstFrame = true;
 
@@ -46,9 +46,14 @@ public class RayTracingController : MonoBehaviour
     private Material _LDRtoHDR;
     private Material _accumulateMat;
 
-    public int MaxReflections = 4;
-    public int maxReflectionsLocked = 4;
-    public int maxReflectionsUnlocked = 4;
+    public int MaxReflections = 2;
+    [Range(1, 32)]
+    public int SamplePerPixel = 1;
+    public int maxReflectionsLocked = 2;
+    public int maxReflectionsUnlocked = 2;
+    public float p_phi = 0.2f;
+    public float n_phi = 0.35f;
+    public float c_phi = 0.45f;
     [Range(5, 100)]
     public int focal_length = 50;
     [Range(0.01f, 0.99f)]
@@ -118,7 +123,7 @@ public class RayTracingController : MonoBehaviour
 
         Debug.Log("rebuildng mesh objects");
         _meshObjectsNeedRebuilding = false;
-        _currentSample = 0;
+        _CurrentFrame = 0;
 
         // Clear all lists
         ClearMeshLists();
@@ -349,7 +354,7 @@ public class RayTracingController : MonoBehaviour
 
 
     private void OnEnable() {
-        _currentSample = 0;
+        _CurrentFrame = 0;
         InitSpheres(false);
     }
 
@@ -441,23 +446,32 @@ public class RayTracingController : MonoBehaviour
         //        }
 
         {
-            RebuildMeshObjectBuffers();  // populate meshobject compute buffers
+            this.RebuildMeshObjectBuffers();  // populate meshobject compute buffers
             this.SetShaderParametersPerUpdate();
         }
 
         //Ray tracing
 
         {
-            this.Render(_converged);
+            bool _NeedGbuffer = true;
+            for (int i = 0; i < this.SamplePerPixel; i++)
+            {
+                this.SetShaderParametersPerUpdate();
+
+                this.PathTracing(_converged, _NeedGbuffer);
+                this._CurrentFrame++;
+                _NeedGbuffer = false;
+            }
+
             //Graphics.Blit(_converged, destination, _LDRtoHDR);
             //return;
 
         }
 
         this.SVGFDenoise(_converged, destination);
-        //this.Denoise(_converged, destination);
+        //this.EAWDenoise(_converged, destination);
 
-        _currentSample++;
+        
 
     }
 
@@ -473,7 +487,7 @@ public class RayTracingController : MonoBehaviour
     //    this.Render(_camera.targetTexture);
     //}
 
-    private void Render(RenderTexture _converged)
+    private void PathTracing(RenderTexture _converged, bool _needGbuffer)
     {
         // Make sure we have a current render target
         InitRenderTexture(ref _DevTmpTarget);
@@ -486,6 +500,7 @@ public class RayTracingController : MonoBehaviour
         RayTracingShader.SetTexture(0, "GbufferMotion", GBufferTextures[3]);
 
         RayTracingShader.SetInt("focal_length", focal_length);
+        RayTracingShader.SetBool("need_gbuffer", _needGbuffer);
         RayTracingShader.SetFloat("aperture_radius", aperture_radius);
         // spawn a thread group per 8x8 pixel region
         // default thread group consists of 8x8 threads
@@ -494,7 +509,7 @@ public class RayTracingController : MonoBehaviour
         RayTracingShader.Dispatch(0, threadGroupsX, threadGroupsY, 1);
 
         // screen shader (anti aliasing via alpha blending jittered ray traces)
-        _addMaterial.SetFloat("_Sample", _currentSample);
+        _addMaterial.SetFloat("_Sample", _CurrentFrame);
 
         // Blit the result texture to _converged
         Graphics.Blit(_DevTmpTarget, _converged, _addMaterial);  // apply screen shader
@@ -570,13 +585,16 @@ public class RayTracingController : MonoBehaviour
     private void SVGFDenoise(RenderTexture src, RenderTexture dst)
     {
         InitRenderTexture(ref _pingpng);
-
+        //from devAccumColor[_CurrentIndex] to devAccumColor[_CurrentIndex ^ 1]
+        //from devAccumMoment[_CurrentIndex] to devAccumMoment[_CurrentIndex ^ 1]
         this.TemporalAccumulation(src);
-        
+        //from devAccumMoment[_CurrentIndex ^ 1] to devVariance
         this.EstimateVariance();
 
+        //
         this.FilterVariance(devVariance, devFilteredVariance);
         this.EAWaveletFilter(_DevTmpTarget, devAccumColor[_CurrentIndex ^ 1], devTmpVariance, devVariance, devFilteredVariance, 0);
+        //For accumulation of next frame
         Graphics.Blit(_DevTmpTarget, devAccumColor[_CurrentIndex ^ 1]);
 
         this.FilterVariance(devTmpVariance, devFilteredVariance);
@@ -601,7 +619,7 @@ public class RayTracingController : MonoBehaviour
         this._CurrentIndex = this._CurrentIndex ^ 1;
     }
 
-    private void Denoise(RenderTexture src, RenderTexture dst)
+    private void EAWDenoise(RenderTexture src, RenderTexture dst)
     {
 
         InitRenderTexture(ref _pingpng);
@@ -618,6 +636,9 @@ public class RayTracingController : MonoBehaviour
         DenoiserShader.SetTexture(0, "_PositionTexture", GBufferTextures[1]);
         DenoiserShader.SetTexture(0, "Result", _pingpng);
         DenoiserShader.SetInt("level", 0);
+        DenoiserShader.SetFloat("p_phi", p_phi);
+        DenoiserShader.SetFloat("n_phi", n_phi);
+        DenoiserShader.SetFloat("c_phi", c_phi);
         DenoiserShader.Dispatch(0, threadGroupsX, threadGroupsY, 1);
 
         DenoiserShader.SetTexture(0, "_RayTracingTexture", _pingpng);
@@ -625,6 +646,9 @@ public class RayTracingController : MonoBehaviour
         DenoiserShader.SetTexture(0, "_PositionTexture", GBufferTextures[1]);
         DenoiserShader.SetTexture(0, "Result", _DevTmpTarget);
         DenoiserShader.SetInt("level", 1);
+        DenoiserShader.SetFloat("p_phi", p_phi);
+        DenoiserShader.SetFloat("n_phi", n_phi);
+        DenoiserShader.SetFloat("c_phi", c_phi);
         DenoiserShader.Dispatch(0, threadGroupsX, threadGroupsY, 1);
         
         DenoiserShader.SetTexture(0, "_RayTracingTexture", _DevTmpTarget);
@@ -632,6 +656,9 @@ public class RayTracingController : MonoBehaviour
         DenoiserShader.SetTexture(0, "_PositionTexture", GBufferTextures[1]);
         DenoiserShader.SetTexture(0, "Result", _pingpng);
         DenoiserShader.SetInt("level", 2);
+        DenoiserShader.SetFloat("p_phi", p_phi);
+        DenoiserShader.SetFloat("n_phi", n_phi);
+        DenoiserShader.SetFloat("c_phi", c_phi);
         DenoiserShader.Dispatch(0, threadGroupsX, threadGroupsY, 1);
 
         DenoiserShader.SetTexture(0, "_RayTracingTexture", _pingpng);
@@ -639,6 +666,9 @@ public class RayTracingController : MonoBehaviour
         DenoiserShader.SetTexture(0, "_PositionTexture", GBufferTextures[1]);
         DenoiserShader.SetTexture(0, "Result", _DevTmpTarget);
         DenoiserShader.SetInt("level", 3);
+        DenoiserShader.SetFloat("p_phi", p_phi);
+        DenoiserShader.SetFloat("n_phi", n_phi);
+        DenoiserShader.SetFloat("c_phi", c_phi);
         DenoiserShader.Dispatch(0, threadGroupsX, threadGroupsY, 1);
 
         DenoiserShader.SetTexture(0, "_RayTracingTexture", _DevTmpTarget);
@@ -646,9 +676,12 @@ public class RayTracingController : MonoBehaviour
         DenoiserShader.SetTexture(0, "_PositionTexture", GBufferTextures[1]);
         DenoiserShader.SetTexture(0, "Result", _pingpng);
         DenoiserShader.SetInt("level", 4);
+        DenoiserShader.SetFloat("p_phi", p_phi);
+        DenoiserShader.SetFloat("n_phi", n_phi);
+        DenoiserShader.SetFloat("c_phi", c_phi);
         DenoiserShader.Dispatch(0, threadGroupsX, threadGroupsY, 1);
         
-        Graphics.Blit(_pingpng, dst);
+        Graphics.Blit(_pingpng, dst, _LDRtoHDR);
     }
 
     private void InitRenderTexture(ref RenderTexture tex, RenderTextureFormat ft = RenderTextureFormat.ARGBFloat)
@@ -679,8 +712,7 @@ public class RayTracingController : MonoBehaviour
             new RenderTexture(Screen.width, Screen.height, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear),
             //motion
             new RenderTexture(Screen.width, Screen.height, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear),
-            //direct
-            //new RenderTexture(Screen.width, Screen.height, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear)
+
 
             //last normal + matid 
             new RenderTexture(Screen.width, Screen.height, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear),
@@ -696,13 +728,6 @@ public class RayTracingController : MonoBehaviour
             GBufferTextures[i].enableRandomWrite = true;
             GBuffers[i] = GBufferTextures[i].colorBuffer;
         }
-        GBufferIDs = new int[]
-        {
-            Shader.PropertyToID("_GBuffer0"),
-            Shader.PropertyToID("_GBuffer1"),
-            Shader.PropertyToID("_GBuffer2"),
-            //Shader.PropertyToID("_GBuffer3"),
-        };
 
         devAccumColor = new RenderTexture[] { null, null };
         devAccumMoment = new RenderTexture[] { null, null };
@@ -717,16 +742,12 @@ public class RayTracingController : MonoBehaviour
 
         InitRenderTexture(ref _converged);
 
-        //DepthTexure = new RenderTexture(Screen.width, Screen.height, 24, RenderTextureFormat.Depth, RenderTextureReadWrite.Linear);
 
         RebuildMeshObjectBuffers();  // populate meshobject compute buffers
         selectedBVHNode = BVHRoot;
 
         UpdateSkybox(0);
         RayTracingShader.SetInt("_SkyboxEnabled", SkyboxEnabled ? 1 : 0);
-
-
-
 
     }
 
@@ -743,7 +764,7 @@ public class RayTracingController : MonoBehaviour
     private void Update() {
         if (transform.hasChanged)
         {
-            _currentSample = 0;
+            _CurrentFrame = 0;
             transform.hasChanged = false;
         }
 
@@ -770,7 +791,7 @@ public class RayTracingController : MonoBehaviour
             if ( Input.GetKeyDown( "" + i ) )
             {
                 UpdateSkybox(i);
-                _currentSample = 0;
+                _CurrentFrame = 0;
             }
         }
 
