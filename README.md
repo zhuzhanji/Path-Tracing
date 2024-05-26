@@ -4,8 +4,9 @@
 
 * Monte Carlo Importance Sampling, Russian Roulette
 
-* Edge-avoiding À-Trous Wavelet Filter
 * Spatiotemporal Variance-Guided Filter
+
+* Edge-avoiding À-Trous Wavelet Filter
 
 * Simple TAA
 
@@ -20,7 +21,7 @@
 * Skybox
 * Unity
 
-*Adjustable SPP/frame ((1 spp to 32 spp per frame)
+* Adjustable SPP/frame ((1 spp to 32 spp per frame)
 
 # Demo
 
@@ -35,7 +36,9 @@
 
 <img width="808" alt="Screenshot 2024-05-14 at 08 19 34" src="https://github.com/zhuzhanji/Path-Tracing/assets/37281560/1a00088c-5297-4147-a3cc-7604537810fb">
 
-
+# Todo
+  * Material: albedo map, normal map etc
+  * SVGF albedo demodulation and modulation after albedo maps are added
 
 # Reference
 
