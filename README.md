@@ -8,7 +8,7 @@
 
 * Edge-avoiding À-Trous Wavelet Filter
   
-* Neighbourhood color clamp to mitigate fireflies
+* Fireflies mitigation
   
 * Simple TAA
 
