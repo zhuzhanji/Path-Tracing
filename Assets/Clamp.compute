@@ -1,0 +1,44 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+
+RWTexture2D<float4> devColorIn;
+
+RWTexture2D<float4> devColorOut;
+
+int _Radius;
+
+[numthreads(8,8,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    int2 idx = id.xy;
+
+	uint width, height;
+    devColorOut.GetDimensions(width, height);
+	if (idx.x >= width || idx.y >= height) {
+		return;
+	}
+
+	float3 minColor = float3(1.0, 1.0, 1.0);
+    float3 maxColor = float3(0.0, 0.0, 0.0);
+	float3 color = devColorIn[idx].rgb;
+    for(int i = -_Radius; i <= _Radius; i++)
+    {
+        for(int j = -_Radius; j <= _Radius; j++)
+        {
+            if(i == 0 && j == 0) continue;
+            int qx = id.x + j;
+			int qy = id.y + i;
+
+			if (qx >= width || qy >= height || qx < 0 || qy < 0) {
+				continue;
+			}
+			uint2 uv0 = uint2(qx, qy);
+            float3 c0 = devColorIn[uv0].rgb;
+            minColor = min(minColor, c0);
+            maxColor = max(maxColor, c0);
+        }
+    }
+
+	devColorOut[idx] = float4(clamp(color, minColor, maxColor), 1.0);
+}

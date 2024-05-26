@@ -72,6 +72,7 @@
   <ItemGroup>
     <None Include="Assets/FilterVariance.compute" />
     <None Include="Assets/MyDefered.shader" />
+    <None Include="Assets/Clamp.compute" />
     <None Include="Assets/RayTracingShader.compute" />
     <None Include="Assets/Denoiser.compute" />
     <None Include="Assets/LDRtoHDR.shader" />

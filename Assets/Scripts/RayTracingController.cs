@@ -11,6 +11,7 @@ public class RayTracingController : MonoBehaviour
     public ComputeShader EstimateVarianceShader;
     public ComputeShader FilterVarianceShader;
     public ComputeShader EAWaveletFilterShader;
+    public ComputeShader PostProcessShader;
 
     private bool SkyboxEnabled = true;
 
@@ -577,6 +578,16 @@ public class RayTracingController : MonoBehaviour
         EAWaveletFilterShader.Dispatch(0, threadGroupsX, threadGroupsY, 1);
     }
 
+    private void Clamp(RenderTexture devColorOut, RenderTexture devColorIn)
+    {
+        int threadGroupsX = Mathf.CeilToInt(Screen.width / 8.0f);
+        int threadGroupsY = Mathf.CeilToInt(Screen.height / 8.0f);
+        PostProcessShader.SetTexture(0, "devColorIn", devColorIn);
+        PostProcessShader.SetTexture(0, "devColorOut", devColorOut);
+        PostProcessShader.SetInt("_Radius", 2);
+        PostProcessShader.Dispatch(0, threadGroupsX, threadGroupsY, 1);
+    }
+
     private void SVGFDenoise(RenderTexture src, RenderTexture dst)
     {
         InitRenderTexture(ref _pingpng);
@@ -607,7 +618,10 @@ public class RayTracingController : MonoBehaviour
         this.FilterVariance(devVariance, devFilteredVariance);
         this.EAWaveletFilter(_pingpng, _DevTmpTarget, devTmpVariance, devVariance, devFilteredVariance, 4);
 
-        Graphics.Blit(_pingpng, dst, _LDRtoHDR);
+
+        this.Clamp(_DevTmpTarget, _pingpng);
+
+        Graphics.Blit(_DevTmpTarget, dst, _LDRtoHDR);
 
         this._LastVP = this._camera.projectionMatrix * this._camera.worldToCameraMatrix;
         this._FirstFrame = false;
@@ -675,8 +689,8 @@ public class RayTracingController : MonoBehaviour
         DenoiserShader.SetFloat("n_phi", n_phi);
         DenoiserShader.SetFloat("c_phi", c_phi);
         DenoiserShader.Dispatch(0, threadGroupsX, threadGroupsY, 1);
-        
-        Graphics.Blit(_pingpng, dst, _LDRtoHDR);
+
+        Graphics.Blit(_DevTmpTarget, dst, _LDRtoHDR);
     }
 
     private void InitRenderTexture(ref RenderTexture tex, RenderTextureFormat ft = RenderTextureFormat.ARGBFloat)

@@ -1165,6 +1165,7 @@ MonoBehaviour:
   EstimateVarianceShader: {fileID: 7200000, guid: ee9b0c83c236e422d8d084125c76c2d3, type: 3}
   FilterVarianceShader: {fileID: 7200000, guid: 31df21f396471456aa710dc4d7ffd331, type: 3}
   EAWaveletFilterShader: {fileID: 7200000, guid: 1c88a970b489144b8b2517a1c4b8a139, type: 3}
+  PostProcessShader: {fileID: 7200000, guid: a24b239bbbf8f46668476c3fe75405cd, type: 3}
   MaxReflections: 4
   SamplePerPixel: 1
   maxReflectionsLocked: 4
@@ -1174,9 +1175,9 @@ MonoBehaviour:
   p_phi: 1
   n_phi: 0.35
   c_phi: 0.45
-  sigNormal: 16
-  sigDepth: 2
-  sigLuminance: 8
+  sigNormal: 128
+  sigDepth: 1
+  sigLuminance: 4
   focal_length: 80
   aperture_radius: 0.4
   directionalLight: {fileID: 0}
