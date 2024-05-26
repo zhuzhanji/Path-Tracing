@@ -7,7 +7,9 @@
 * Spatiotemporal Variance-Guided Filter
 
 * Edge-avoiding À-Trous Wavelet Filter
-
+  
+* Neighbourhood color clamp to mitigate fireflies
+  
 * Simple TAA
 
 * Field of Depth
@@ -19,6 +21,7 @@
 * GBuffer
 
 * Skybox
+* 
 * Unity
 
 * Adjustable SPP/frame ((1 spp to 32 spp per frame)
