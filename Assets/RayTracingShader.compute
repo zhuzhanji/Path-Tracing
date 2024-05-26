@@ -18,7 +18,7 @@ float4x4 _LastVP;
 Texture2D<float4> _SkyboxTexture;
 SamplerState sampler_SkyboxTexture;
 int _SkyboxEnabled = 1;
-bool need_gbuffer;
+int need_gbuffer;
 
 sampler2D _ApertureMaskTex;
 
@@ -647,7 +647,7 @@ RayHit Trace(Ray ray, int count)
         IntersectSphere(ray, bestHit, _Spheres[i]);
 
     IntersectBVH(ray, bestHit);
-    if(need_gbuffer && count == 0 && bestHit.distance < 1.#INF){
+    if(need_gbuffer == 1 && count == 0 && bestHit.distance < 1.#INF){
         uint width, height;
         Result.GetDimensions(width, height);
         float4 lastScreenPos = mul(_LastVP, float4(bestHit.position, 1.0));
@@ -701,7 +701,7 @@ float3 Shade(inout Ray ray, inout RayHit hit)
     {
         // no hit, set energy to 0
         ray.energy = float3(0.0f, 0.0f, 0.0f);
-//return float3(1.0,1.0,1.0);
+//return float3(0.3, 0.3, 0.2);
         // darkness
         if (_SkyboxEnabled == 0)
             return float3(0, 0, 0);
@@ -717,7 +717,7 @@ float3 Shade(inout Ray ray, inout RayHit hit)
 void CSMain (uint3 id : SV_DispatchThreadID)
 {
     pixel = id.xy;
-    if(need_gbuffer)
+    if(need_gbuffer == 1)
     {
         GbufferPosition[id.xy] = float4(0, 0, 0, 0);
         GbufferNormal[id.xy] = float4(0, 0, 0, 0);
@@ -731,8 +731,8 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 
     // Transform pixel to [-1,1] range
     // jittered ray sample, random(0-1, 0-1)
+    
     float2 uv = float2((id.xy + _JitterOffset) / float2(width, height) * 2.0f - 1.0f);
-    //float2 uv = float2((id.xy) / float2(width, height) * 2.0f - 1.0f);
 
     // Get a ray from the UVs
     Ray ray = CreateCameraRay(uv);

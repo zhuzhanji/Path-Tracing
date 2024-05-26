@@ -1159,34 +1159,36 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bb95b02d57a244becac1f366cd40fc00, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  randomSeed: 25364
   RayTracingShader: {fileID: 7200000, guid: c4e6758be8dda491696a52d390b1d2bb, type: 3}
   DenoiserShader: {fileID: 7200000, guid: 76d1c61d6bd1c43dc927014f5ecfd4a7, type: 3}
   TemporalAccumulationShader: {fileID: 7200000, guid: 2b46aa4317e0a48ce89e51bf2177b71f, type: 3}
   EstimateVarianceShader: {fileID: 7200000, guid: ee9b0c83c236e422d8d084125c76c2d3, type: 3}
   FilterVarianceShader: {fileID: 7200000, guid: 31df21f396471456aa710dc4d7ffd331, type: 3}
   EAWaveletFilterShader: {fileID: 7200000, guid: 1c88a970b489144b8b2517a1c4b8a139, type: 3}
-  SkyBoxTextures:
-  - {fileID: 2800000, guid: 74a2456e6d69c4ebbac99abae8b4a116, type: 3}
-  - {fileID: 2800000, guid: 164a889281f674f79994dff7406e3242, type: 3}
-  - {fileID: 2800000, guid: 7e80954269cec4bfea6534feaea9015b, type: 3}
-  - {fileID: 2800000, guid: 2feb2e0a64e0f47bb929100e4f28f7b0, type: 3}
-  - {fileID: 2800000, guid: 8473d67e01aa84426a977a918784e053, type: 3}
-  cube: {fileID: 0}
-  cubematerial: {fileID: 2100000, guid: f088e98f649694b4f8e28ecc1addd08c, type: 2}
   MaxReflections: 4
-  SamplePerPixel: 2
+  SamplePerPixel: 1
   maxReflectionsLocked: 4
   maxReflectionsUnlocked: 4
+  randomSeed: 25364
+  DenoiserMethod: 2
   p_phi: 1
   n_phi: 0.35
   c_phi: 0.45
+  sigNormal: 16
+  sigDepth: 2
+  sigLuminance: 8
   focal_length: 80
   aperture_radius: 0.4
   directionalLight: {fileID: 0}
   GroundAlbedo: {r: 0.2924528, g: 0.2924528, b: 0.24141152, a: 0}
   GroundSpecular: {r: 0, g: 0, b: 0, a: 0}
   GroundEmission: {r: 0.16981131, g: 0.13536845, b: 0.13536845, a: 0}
+  SkyBoxTextures:
+  - {fileID: 2800000, guid: 74a2456e6d69c4ebbac99abae8b4a116, type: 3}
+  - {fileID: 2800000, guid: 164a889281f674f79994dff7406e3242, type: 3}
+  - {fileID: 2800000, guid: 7e80954269cec4bfea6534feaea9015b, type: 3}
+  - {fileID: 2800000, guid: 2feb2e0a64e0f47bb929100e4f28f7b0, type: 3}
+  - {fileID: 2800000, guid: 8473d67e01aa84426a977a918784e053, type: 3}
 --- !u!114 &963194230
 MonoBehaviour:
   m_ObjectHideFlags: 0

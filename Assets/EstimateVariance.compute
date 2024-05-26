@@ -29,8 +29,8 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 		float2 sumMoment = 0.f;
 		int numPixel = 0;
 
-		for (int i = -1; i <= 1; i++) {
-			for (int j = -1; j <= 1; j++) {
+		for (int i = -3; i <= 3; i++) {
+			for (int j = -3; j <= 3; j++) {
 				int qx = id.x + j;
 				int qy = id.y + i;
 

@@ -1,30 +1,25 @@
 ﻿<Properties StartupConfiguration="{44D0DEE1-C27C-871F-CE8C-A7973FAF90E8}|">
-  <MonoDevelop.Ide.Workbench ActiveDocument="Assets/Scripts/RayTraceable.cs">
+  <MonoDevelop.Ide.Workbench ActiveDocument="Assets/Denoiser.compute">
     <Files>
-      <File FileName="Assets/RayTracingShader.compute" Line="616" Column="60" />
+      <File FileName="Assets/RayTracingShader.compute" Line="711" Column="43" />
       <File FileName="Assets/MyDefered.shader" Line="1" Column="1" />
-      <File FileName="Assets/Scripts/RayTracingController.cs" Line="135" Column="41" />
-      <File FileName="Assets/AddShader.shader" Line="38" Column="26" />
-      <File FileName="Assets/Denoiser.compute" Line="82" Column="42" />
-      <File FileName="Assets/WaveletFilter.compute" Line="125" Column="26" />
+      <File FileName="Assets/Scripts/RayTracingController.cs" Line="544" Column="11" />
       <File FileName="Assets/utility.cginc" Line="135" Column="21" />
       <File FileName="Assets/Scripts/RayTraceableSphere.cs" Line="1" Column="1" />
-      <File FileName="Assets/TemporalAccumulate.compute" Line="53" Column="6" />
-      <File FileName="Assets/EstimateVariance.compute" Line="41" Column="11" />
-      <File FileName="Assets/FilterVariance.compute" Line="39" Column="13" />
-      <File FileName="Assets/LDRtoHDR.shader" Line="14" Column="10" />
-      <File FileName="Assets/Scripts/CameraController.cs" Line="125" Column="43" />
-      <File FileName="Assets/Scripts/Geometries.cs" Line="9" Column="21" />
-      <File FileName="Assets/Scripts/RayTraceable.cs" Line="11" Column="20" />
+      <File FileName="Assets/TemporalAccumulate.compute" Line="88" Column="33" />
+      <File FileName="Assets/EstimateVariance.compute" Line="6" Column="12" />
+      <File FileName="Assets/FilterVariance.compute" Line="3" Column="1" />
+      <File FileName="Assets/Scripts/CameraController.cs" Line="113" Column="33" />
+      <File FileName="Assets/WaveletFilter.compute" Line="114" Column="80" />
+      <File FileName="Assets/Denoiser.compute" Line="1" Column="1" />
     </Files>
     <Pads>
       <Pad Id="ProjectPad">
         <State name="__root__">
           <Node name="Path_Tracing" expanded="True">
             <Node name="Assets" expanded="True">
-              <Node name="Scripts" expanded="True">
-                <Node name="RayTraceable.cs" selected="True" />
-              </Node>
+              <Node name="Scripts" expanded="True" />
+              <Node name="Denoiser.compute" selected="True" />
             </Node>
           </Node>
         </State>

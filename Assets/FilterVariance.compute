@@ -1,8 +1,6 @@
 // Each #kernel tells which function to compile; you can have many kernels
 #pragma kernel CSMain
 
-//Texture2D<float> devVarianceIn;
-//SamplerState sampler_devVarianceIn;
 
 RWTexture2D<float> devVarianceIn;
 

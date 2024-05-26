@@ -69,6 +69,9 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 	float3 lastColor = devAccumColorIn[lastUV].xyz;
 	float3 lastMoment = devAccumMomentIn[lastUV].xyz;
 
+/*
+todo: 2*2 tap bilinear filter
+*/
 
 	bool diff = _FirstFrame;
 	if (abs(dot(norm.xyz, lastNorm.xyz)) < .1f) {

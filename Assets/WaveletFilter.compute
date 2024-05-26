@@ -29,9 +29,10 @@ RWTexture2D<float> devVarianceOut;
 int level;
 
 
-static const float sigNormal = 128.0f;
-static const float sigDepth = 1.0f;
-static const float sigLuminance = 4.0f;
+float sigNormal;
+float sigDepth;
+float sigLuminance;
+
 static const float Gaussian5x5[5][5] = {
 	{ .0030f, .0133f, .0219f, .0133f, .0030f },
 	{ .0133f, .0596f, .0983f, .0596f, .0133f },
@@ -110,13 +111,12 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 			//float varFilterQ = devFilteredVariance[uv0];
 
 			float distPos2 = distance(posP, posQ);
-			float wPos = (exp(-distPos2 / sigDepth) + 1e-4f);
+			float wPos = exp(-distPos2 / (sigDepth + 1e-4f ));
 
             //float wPos = min(exp(-distPos2 / (0.2 * 0.2)), 1.f);
 
                 // Weight for normal buffer
 			float wNorm = pow(max(dot(normP, normQ), 0.0), sigNormal);
-
 
 			//float denom = sigLuminance * sqrt(max(varFilterP, 0.f)) + 1e-4f;
 			float wColor = exp(-abs(luminance(colorP) - luminance(colorQ)) / denom);
