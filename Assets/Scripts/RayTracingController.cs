@@ -13,7 +13,7 @@ public class RayTracingController : MonoBehaviour
     public ComputeShader EAWaveletFilterShader;
     public ComputeShader PostProcessShader;
 
-    private bool SkyboxEnabled = true;
+    private bool SkyboxEnabled = false;
 
     private RenderTexture _DevTmpTarget, _converged;
     //, _convergedIndirect, _convergedDirect;
@@ -148,7 +148,9 @@ public class RayTracingController : MonoBehaviour
         foreach (RayTraceable obj in _rayTracingObjects)
         {
             // add mesh material data
-            _triMeshMats.Add(obj.GetMeshMaterial());
+            var meshMat = obj.GetMeshMaterial();
+            meshMat.matid = 1000 + objCounter;
+            _triMeshMats.Add(meshMat);
 
             Mesh mesh = obj.GetComponent<MeshFilter>().sharedMesh;
 
@@ -174,7 +176,15 @@ public class RayTracingController : MonoBehaviour
             // Vector3[] normals = mesh.normals;
             // Debug.Log("normals: " + normals.Length + " vertices: " + vertices.Length);
             _vertices.AddRange(vertices);
-            _normals.AddRange(mesh.normals);
+
+            
+            foreach(Vector3 norm in mesh.normals)
+            {
+                Vector3 normal = obj.transform.localToWorldMatrix * new Vector4(norm.x, norm.y, norm.z, 0.0f);
+                
+                _normals.Add((normal.normalized));
+            }
+            //_normals.AddRange(mesh.normals);
 
             ++objCounter;
         }
@@ -578,13 +588,13 @@ public class RayTracingController : MonoBehaviour
         EAWaveletFilterShader.Dispatch(0, threadGroupsX, threadGroupsY, 1);
     }
 
-    private void Clamp(RenderTexture devColorOut, RenderTexture devColorIn)
+    private void Clamp(RenderTexture devColorIn, RenderTexture devColorOut)
     {
         int threadGroupsX = Mathf.CeilToInt(Screen.width / 8.0f);
         int threadGroupsY = Mathf.CeilToInt(Screen.height / 8.0f);
         PostProcessShader.SetTexture(0, "devColorIn", devColorIn);
         PostProcessShader.SetTexture(0, "devColorOut", devColorOut);
-        PostProcessShader.SetInt("_Radius", 2);
+        PostProcessShader.SetInt("_Radius", 1);
         PostProcessShader.Dispatch(0, threadGroupsX, threadGroupsY, 1);
     }
 
@@ -618,10 +628,10 @@ public class RayTracingController : MonoBehaviour
         this.FilterVariance(devVariance, devFilteredVariance);
         this.EAWaveletFilter(_pingpng, _DevTmpTarget, devTmpVariance, devVariance, devFilteredVariance, 4);
 
-
-        this.Clamp(_DevTmpTarget, _pingpng);
-
-        Graphics.Blit(_DevTmpTarget, dst, _LDRtoHDR);
+        //this.Clamp(_pingpng, _DevTmpTarget);
+        //this.Clamp(_DevTmpTarget, _pingpng);
+        
+        Graphics.Blit(_pingpng, dst, _LDRtoHDR);
 
         this._LastVP = this._camera.projectionMatrix * this._camera.worldToCameraMatrix;
         this._FirstFrame = false;

@@ -27,6 +27,10 @@ float absDot(float3 a, float3 b) {
     return abs(dot(a, b));
 }
 
+float satDot(float3 a, float3 b) {
+        return max(dot(a, b), 0.f);
+}
+
 // From pixar - https://graphics.pixar.com/library/OrthonormalB/paper.pdf
 void basis(float3 n, out float3 b1, out float3 b2) 
 {
@@ -154,10 +158,10 @@ float3 SampleGGXVNDF(float3 V, float ax, float ay, float r1, float r2)
 
 float GGXVNDFPdf(float NoH, float NoV, float alpha)
 {
- 	//float D = D_GTR(alpha, NoH, 2.);
+ 	float D = D_GTR(alpha, NoH, 2.);
     float G1 = SmithG(NoV, alpha*alpha);
-    //return (D * G1) / max(0.00001, 4.0f * NoV);
-    return (G1) / max(0.00001, 4.0f * NoV);
+    return (D * G1) / max(0.00001, 4.0f * NoV);
+    //return (G1) / max(0.00001, 4.0f * NoV);
 }
 
 
@@ -194,3 +198,38 @@ float GTR2Pdf(float3 n, float3 m, float3 wo, float alpha) {
     return GTR2Distrib(dot(n, m), alpha) * schlickG(dot(n, wo), alpha) *
         absDot(m, wo) / absDot(n, wo);
 }
+
+float powerHeuristic(float f, float g)
+{
+    float f2 = f * f;
+    return f2 / (f2 + g * g);
+}
+
+/*
+p(w) = dist^2 / (cos(theta) * A)
+pdf = 1/A
+*/
+float GetLightPdf(float invA, float3 x, float3 y, float3 ny)
+{
+    float3 yx = x - y;
+    return invA * dot(yx, yx) / absDot(ny, normalize(yx));
+}
+
+bool refract(float3 n, float3 wi, float ior, out float3 wt) {
+        float cosIn = dot(n, wi);
+        if (cosIn < 0) {
+            ior = 1.f / ior;
+        }
+        float sin2In = max(0.f, 1.f - cosIn * cosIn);
+        float sin2Tr = sin2In / (ior * ior);
+
+        if (sin2Tr >= 1.f) {
+            return false;
+        }
+        float cosTr = sqrt(1.f - sin2Tr);
+        if (cosIn < 0) {
+            cosTr = -cosTr;
+        }
+        wt = normalize(-wi / ior + n * (cosIn / ior - cosTr));
+        return true;
+    }

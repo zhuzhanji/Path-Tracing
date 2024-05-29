@@ -242,14 +242,22 @@ struct RayHit
         return brdf;
     }
 
+    float4 GetBSDF(float3 wi, float3 wo)
+    {
+        float3 v = -wi;
+        float3 l = wo;
+        float3 h = (v + l) / 2;
+        float3 f0 = lerp(float3(0.04, 0.04, 0.04), albedo, metallic);
+        float3 F = F_Schlick(f0, dot(v,h));
+    }
 
     float4 sampleDielectric(inout Ray ray){
-        float4 brdf = float4(0, 0, 0, 0);
+        float4 brdf;
         float num = rand();
         float n = 1.f; 
         float probability;
         float3 normal2 = normal;
-        float ior = 0.2;
+        float ior = 0.9;
 
         float cos = clamp(dot(ray.direction, normal), -1.f, 1.f);
         
@@ -285,87 +293,6 @@ struct RayHit
         return brdf;
     }
 
-float4 sampleDielectric2(inout Ray ray){
-        float3 n = normal;
-        float3 wo = -ray.direction;
-        float ior = 0.2;
-        float pdfRefl = schlickEquation(ior, 1, dot(n, wo));
-        float4 brdf = 0.0;
-        brdf.rgb = albedo;
-
-        if (rand() < pdfRefl) {
-            ray.direction = reflect(-wo, n);
-            brdf.a = 1.f;
-        }
-        else {
-            bool result = refract(n, wo, ior, ray.direction);
-            if (!result) {
-                return brdf;
-            }
-            if (dot(n, wo) < 0) {
-                ior = 1.f / ior;
-            }
-            brdf.rgb /= ior * ior;        
-            brdf.a = 1.f;
-        }
-        return brdf;
-    }
-
-    float3 metallicWorkflowBSDF(float3 n, float3 wo, float3 wi) {
-        float alpha = roughness * roughness;
-        float3 h = normalize(wo + wi);
-        
-        float cosO = dot(n, wo);
-        float cosI = dot(n, wi);
-        if (cosI * cosO < 1e-7f) {
-            return 0.0f;
-        }
-        float3 f0 = lerp(float3(0.04, 0.04, 0.04), albedo, metallic);
-        float3 F = F_Schlick(f0, dot(wo,h));
-        float G = smithG(cosO, cosI, alpha);
-        float D = D_GTR(alpha, dot(n, h), 2);
-
-        float3 spec = G * D / (4.f * cosI * cosO);
-        return lerp(albedo / PI * (1.f - metallic), spec, F);
-    }
-
-    float metallicWorkflowPdf(float3 n, float3 wo, float3 wi) {
-        float3 h = normalize(wo + wi);
-        return lerp(satDot(n, wi) * PiInv,
-            GTR2Pdf(n, h, wo, roughness * roughness) / (4.f * absDot(h, wo)),
-            1.f / (2.f - metallic)
-        );
-    }
-
-    float4 sampleMetallicWorkflow(inout Ray ray)
-    {
-        float4 brdf = float4(0, 0, 0, 0);
-        float3 n = normal;
-        float3 wo = -ray.direction;
-        float3 r = float3(rand(), rand(), rand());
-
-        float alpha = roughness * roughness;
-
-        if (r.z > (1.f / (2.f - metallic))) {
-            ray.direction = SampleHemisphereCosine(n);
-        }
-        else {
-            float3 t,b;
-            basis(n,t,b);
-            float3 V = toLocal(t,b,n,wo);
-            float3 h = SampleGGXVNDF(V, alpha, alpha, r.x, r.y);
-            if (h.z < 0.0)
-                h = -h;
-            h = toWorld(t,b,n,h);
-            ray.direction = -reflect(wo, h);
-        }
-
-        if (dot(n, ray.direction) >= 0.f) {
-            brdf.rgb = metallicWorkflowBSDF(n, wo, ray.direction);
-            brdf.a = metallicWorkflowPdf(n, wo, ray.direction);
-        }
-        return brdf;
-    }
 
 };
 RayHit CreateRayHit()
@@ -754,22 +681,15 @@ RayHit Trace(Ray ray, int count)
 
 
 
-float3 Shade(inout Ray ray, inout RayHit hit)
+float4 Shade(inout Ray ray, inout RayHit hit)
 {
-    if (hit.distance < 1.#INF)
-    {
-        if(energy(hit.emission) > 0.0)
-            return hit.emission;
         float4 brdf;
         switch (hit.type) {
         case 0:
             brdf = hit.samplePhong(ray);
             break;
-        //case 1:
-        //    brdf = hit.sampleDisneyBRDF(ray);
-        //    break;
         case 1:
-            brdf = hit.sampleMetallicWorkflow(ray);
+            brdf = hit.sampleDisneyBRDF(ray);
             break;
         case 2:
             brdf = hit.sampleDielectric(ray);
@@ -779,7 +699,7 @@ float3 Shade(inout Ray ray, inout RayHit hit)
             return float4(0.,0,0,0);
         }
 
-        if((hit.type < 3 && dot(ray.direction, hit.normal) <= 0.0f) || brdf.a < 0.0000001f)
+        if((hit.type < 2 && dot(ray.direction, hit.normal) <= 0.0f) || brdf.a < 0.0000001f)
         {
            ray.energy = float3(0.0f, 0.0f, 0.0f);
            return 0.0f;
@@ -787,24 +707,37 @@ float3 Shade(inout Ray ray, inout RayHit hit)
 
         ray.energy *= brdf.rgb / brdf.a;
 		ray.origin = hit.position + ray.direction * 0.001f;
-        return hit.emission;;
-    }
-    else
-    {
-        // no hit, set energy to 0
-        ray.energy = float3(0.0f, 0.0f, 0.0f);
-//return float3(0.3, 0.3, 0.2);
-        // darkness
-        if (_SkyboxEnabled == 0)
-            return float3(0, 0, 0);
-        // Sample the skybox and write it
-        float theta = acos(ray.direction.y) / -PI;
-        float phi = atan2(ray.direction.x, -ray.direction.z) / -PI * 0.5f;
-        return (_SkyboxTexture.SampleLevel(sampler_SkyboxTexture, float2(phi, theta), 0).xyz);
-    }
+        return brdf;
 }
 
+void WriteResult(uint2 id, float3 color)
+{
+    float3 result = pow(color, 1.0/2.2);
+    //HDR to LDR
+    result = result / (result + 1.0);
+    Result[id.xy] = float4(result, 1);
+}
 
+float3 SampleLight(float3 lightCenter, float2 lightSize)
+{
+    float x = rand() * 2.0 - 1.0;
+    float y = rand() * 2.0 - 1.0;
+    return lightCenter + float3(lightSize.x * x, 0, lightSize.y * y);
+}
+
+float4 GetBSDF(int type, float3 normal, float3 wi, float3 wo)
+{
+    float4 bsdf = float4(0, 0, 0, 0);
+    if(type == 1)
+    {
+
+    }
+    else if(type == 2)
+    {
+
+    }
+    return bsdf;
+}
 
 [numthreads(8,8,1)]
 void CSMain (uint3 id : SV_DispatchThreadID)
@@ -834,30 +767,81 @@ void CSMain (uint3 id : SV_DispatchThreadID)
     // Path Trace and shade
     float3 result = float3(0, 0, 0);
 
-    for (int i = 0; i < _MaxReflections /* max bounce */; i++)
-    {
-        // update ray invDir (for AABB test)
-        ray.invDir = 1.0f / ray.direction;
-        RayHit hit = Trace(ray, i);
+    // update ray invDir (for AABB test)
+    ray.invDir = 1.0f / ray.direction;
+    RayHit hit = Trace(ray, 0);
+    //hit nothing
+    if (!(hit.distance < 1.#INF)){
+        float3 energy = ray.energy;
+        // no hit, set energy to 0
+        ray.energy = float3(0.0f, 0.0f, 0.0f);
 
+        //if (_SkyboxEnabled == 0)
+        WriteResult(id.xy , result);
+        return;
+
+        // Sample the skybox and write it
+    //    float theta = acos(ray.direction.y) / -PI;
+    //    float phi = atan2(ray.direction.x, -ray.direction.z) / -PI * 0.5f;
+    //    float3 emission = _SkyboxTexture.SampleLevel(sampler_SkyboxTexture, float2(phi, theta), 0).xyz;
+    //    return WriteResult(result + energy * emission);
+    }
+    //hit a light
+    if(energy(hit.emission) > 0.0f){
+        WriteResult(id.xy, hit.emission);
+        return;  
+    }
+
+    for (int i = 1; i < _MaxReflections /* max bounce */; i++)
+    {
         //multiply throughput at current ray path with emission
         //Rendering Equation
         float3 energy = ray.energy;
-        float3 emission = Shade(ray, hit);
-        result += energy * emission;
-
-        // if hit light source or hit nothing, break
-        if (any(emission) || !any(ray.energy))
+        if(hit.type != 2)
         {
+            float3 lightCenter = float3(-283.8, -1.35, -238.9);
+             float2 lightSize = float2(50, 75);
+             float3 lightPosition = SampleLight(lightCenter, lightSize);
+             float lightPdf = GetLightPdf(1.0/(50.0 * 75.0), hit.position, lightPosition, float3(0, -1, 0));
+             if (lightPdf > 0) {
+                 float3 lightdir = lightPosition - hit.position;
+
+                 float4 bsdf = hit.GetBSDF(ray.direction, lightdir) ;
+                 float3 lightEmission = float3(3,3,3);
+                 
+                 result += energy * bsdf.rgb * lightEmission / lightPdf * powerHeuristic(lightPdf, bsdf.a);
+             }
+        }
+        float4 brdf = shade(ray, hit);
+        //Invalid shading
+        if (!any(brdf) || !any(ray.energy))
+        {
+            break;
+        }
+        float3 curpos = hit.origin;
+
+        //Go for another hit
+        bool isDialectic = (hit.type == 2);
+        ray.invDir = 1.0f / ray.direction;
+        hit = Trace(ray, i);
+
+        if (!(hit.distance < 1.#INF)){
+            break;
+        }
+        if(energy(hit.emission) > 0.0f){
+            float3 emission = hit.emission;
+            float lightPdf = GetLightPdf( 1.0/(50.0 * 75.0), curpos, hit.origin, hit.normal);
+
+			float weight = isDialectic ? 1 : powerHeuristic(brdf.a, lightPdf);
+			result += hit.emission * ray.energy * weight;
             break;
         }
         
     }
-    //demodulate
-    //IndirectLighting[id.xy] = float4(indirect, 1);
-    //DirectLighting[id.xy] = float4(direct, 1);
-
-    //HDR to LDR
-    result = result / (result + 1.0);
-    Result[id.xy] = float4(result, 1);
+    WriteResult(id.xy, result);
+    return;
 }
+
+
+
+

@@ -220,5 +220,9 @@ public class BBox {
 
 public struct TriMeshMaterial {
     public Vector3 albedo, specular, emission;
+    public float roughness;
+    public float metallic;
+    public int matid;
     public int type;
+    
 }
