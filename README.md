@@ -34,11 +34,13 @@
 <img width="772" alt="image" src="https://github.com/zhuzhanji/Path-Tracing/assets/37281560/7799cd0b-d549-41db-9bba-a9d07c80b351">
 
 * Multiple importance sampling
+
+Less noisy and faster to converge when the light source is small.
 <img width="580" alt="image" src="https://github.com/zhuzhanji/Path-Tracing/assets/37281560/9dfa57eb-3508-402e-9916-fd07d8d14922">
 
 * Denoisers
   
-
+SVGF is more temporally stable than EAW.
 
 https://github.com/zhuzhanji/Path-Tracing/assets/37281560/1de0f4e7-5310-4938-84b2-445f04fa5486
 
