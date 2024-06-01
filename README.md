@@ -3,7 +3,7 @@
 
 * Path Tracing
 
-* Monte Carlo Importance Sampling, Russian Roulette
+* Multiple Importance Sampling, Russian Roulette
 
 * Spatiotemporal Variance-Guided Filter
 
@@ -16,22 +16,28 @@
 * Field of Depth
 
 * BVH
+* Metallic workflow
 
 * Refraction, Disney BRDF, Phong
 
 * GBuffer
 
 * Skybox
-* 
+  
 * Unity
 
 * Adjustable SPP/frame ((1 spp to 32 spp per frame)
 
 # Demo
+* path tracer + taa + skybox + metallic workflow + refraction
 
 <img width="772" alt="image" src="https://github.com/zhuzhanji/Path-Tracing/assets/37281560/7799cd0b-d549-41db-9bba-a9d07c80b351">
 
+* Multiple importance sampling
+<img width="580" alt="image" src="https://github.com/zhuzhanji/Path-Tracing/assets/37281560/9dfa57eb-3508-402e-9916-fd07d8d14922">
 
+* Denoisers
+  
 
 # Todo
   * Material: albedo map, normal map etc
