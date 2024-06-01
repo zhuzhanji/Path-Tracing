@@ -1,3 +1,4 @@
+(Caution: This repository is currently under active development and quite unstable. Be aware of this before cloning.)
 # Features:
 
 * Path Tracing
