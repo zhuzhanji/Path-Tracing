@@ -39,6 +39,10 @@
 * Denoisers
   
 
+
+https://github.com/zhuzhanji/Path-Tracing/assets/37281560/1de0f4e7-5310-4938-84b2-445f04fa5486
+
+
 # Todo
   * Material: albedo map, normal map etc
   * SVGF albedo demodulation and modulation after albedo maps are added
