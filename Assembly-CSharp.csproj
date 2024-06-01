@@ -75,6 +75,7 @@
     <None Include="Assets/Clamp.compute" />
     <None Include="Assets/RayTracingShader.compute" />
     <None Include="Assets/Denoiser.compute" />
+    <None Include="Assets/taapass.shader" />
     <None Include="Assets/LDRtoHDR.shader" />
     <None Include="Assets/TemporalAccumulate.compute" />
     <None Include="Assets/WaveletFilter.compute" />

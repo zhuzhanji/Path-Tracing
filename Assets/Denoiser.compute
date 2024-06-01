@@ -37,11 +37,11 @@ float3 ewaDenoiser(uint2 uv0, float2 resolution)
 
         float3 sum = float3(0.f, 0.f, 0.f);
         float3 c_val = _RayTracingTexture[uv0].xyz;
-        float3 n_val = _NormalTexture[uv0].xyz;
+        float4 n_val = _NormalTexture[uv0].xyzw;
         float3 p_val = _PositionTexture[uv0].xyz;
         int x = uv0.x;
         int y = uv0.y;
-
+        int primIdP = n_val.w;
         if(dot(n_val, n_val) < 0.001) return c_val;
 
         int step_width = 1 << level;
@@ -69,7 +69,12 @@ float3 ewaDenoiser(uint2 uv0, float2 resolution)
          //       float c_w = min(exp(-dist / (c_phi * c_phi)), 1.f);
          //
          //       // Weight for normal buffer
-                float3 n_tmp = _NormalTexture[uv].xyz;
+                float4 n_tmp = _NormalTexture[uv].xyzw;
+                int primIdQ = n_tmp.w;
+                
+                if (primIdQ <= 0 || primIdQ != primIdP) {
+				    continue;
+			}
          //       dist = max(distance(n_val, n_tmp) / (step_width * step_width), 0.f);
          //       float n_w = min(exp(-dist / (n_phi * n_phi)), 1.f);
          //
@@ -81,7 +86,7 @@ float3 ewaDenoiser(uint2 uv0, float2 resolution)
 			float dist = dot(c_val - c_tmp, c_val - c_tmp);
 			float c_w = min(1.f, exp(-dist / c_phi));
 
-			dist  = dot(n_val - n_tmp, n_val - n_tmp) / (step_width * step_width);
+			dist  = dot(n_val.xyz - n_tmp.xyz, n_val.xyz - n_tmp.xyz) / (step_width * step_width);
 			float n_w = min(1.f, exp(-dist / n_phi));
 
 			dist = dot(p_val - p_tmp, p_val - p_tmp);

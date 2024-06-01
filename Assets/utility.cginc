@@ -205,15 +205,7 @@ float powerHeuristic(float f, float g)
     return f2 / (f2 + g * g);
 }
 
-/*
-p(w) = dist^2 / (cos(theta) * A)
-pdf = 1/A
-*/
-float GetLightPdf(float invA, float3 x, float3 y, float3 ny)
-{
-    float3 yx = x - y;
-    return invA * dot(yx, yx) / absDot(ny, normalize(yx));
-}
+
 
 bool refract(float3 n, float3 wi, float ior, out float3 wt) {
         float cosIn = dot(n, wi);

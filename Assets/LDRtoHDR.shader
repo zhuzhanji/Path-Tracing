@@ -1,9 +1,9 @@
 Shader "Hidden/LDRtoHDR"
 {
-    Properties
-    {
-        _MainTex ("Texture", 2D) = "white" {}
-    }
+ //   Properties
+ //   {
+ //       _MainTex ("Texture", 2D) = "white" {}
+ //   }
     SubShader
     {
         // No culling or depth
@@ -38,12 +38,17 @@ Shader "Hidden/LDRtoHDR"
                 return o;
             }
 
-            sampler2D _MainTex;
+            sampler2D _DirectIllumination;
+            sampler2D _IndirectIllumination;
 
             fixed4 frag (v2f i) : SV_Target
             {
-                float3 color = tex2D(_MainTex, i.uv).rgb;
-                return float4(color / (1.f - color + 1e-4f), 1.0);               
+                float3 direct = tex2D(_DirectIllumination, i.uv).rgb;
+                direct = direct / (1.f - direct + 1e-4f);
+                float3 indirect = tex2D(_IndirectIllumination, i.uv).rgb;
+                indirect = indirect / (1.f - indirect + 1e-4f);
+                float3 color = direct + indirect;
+                return float4(color, 1.0);               
             }
             ENDCG
         }

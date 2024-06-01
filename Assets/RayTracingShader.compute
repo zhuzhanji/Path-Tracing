@@ -4,7 +4,8 @@
 
 // Create a RenderTexture with enableRandomWrite flag and set it
 // with cs.SetTexture
-RWTexture2D<float4> Result;
+RWTexture2D<float4> DirectIllumination;
+RWTexture2D<float4> IndirectIllumination;
 RWTexture2D<float4> GbufferAlbedo;
 RWTexture2D<float4> GbufferPosition;
 RWTexture2D<float4> GbufferNormal;
@@ -19,8 +20,6 @@ Texture2D<float4> _SkyboxTexture;
 SamplerState sampler_SkyboxTexture;
 int _SkyboxEnabled;
 int need_gbuffer;
-
-sampler2D _ApertureMaskTex;
 
 // random jitter for TAA
 float2 _JitterOffset;
@@ -437,6 +436,39 @@ StructuredBuffer<BVH_Node> _BVH_Nodes;
 static const uint MAX_BVH_DEPTH = 64; // max array size for doing depth-first traversal of BVH
 const int _BVHSize;
 
+/*********Light Source**************/
+struct LightSource
+{
+    float3 position;
+    float3 normal;
+    float s1;
+    float s2;
+    void CreateLightSource()
+    {
+        position = float3(-2.25, 89.55, 0);
+        normal = float3(0, -1, 0);
+        s1 = 1 * 45;
+        s2 = 0.75 * 45;
+    }
+
+    float3 SampleLight()
+    {
+        float x = rand() * 0.5 - 0.5;
+        float z = rand() * 0.5 - 0.5;
+        return position + float3(s1 * x, 0, s2 * z);
+    }
+    /*
+    p(w) = dist^2 / (cos(theta) * A)
+    pdf = 1/A
+    */
+    float GetLightPdf(float3 x, float3 y)
+    {
+        float invA = 1.0 / (s1 * s2);
+        float3 yx = x - y;
+        return invA * dot(yx, yx) / absDot(normal, normalize(yx));
+    }
+
+};
 
 /*=======Ray=======*/
 
@@ -463,7 +495,7 @@ Ray CreateCameraRay(float2 uv)
 Ray CreatePhysicalCameraRay(float2 uv)
 {
     uint width, height;
-    Result.GetDimensions(width, height);
+    DirectIllumination.GetDimensions(width, height);
 
     float2 r = float2(rand(),rand());
 
@@ -738,7 +770,7 @@ RayHit Trace(Ray ray, int count)
     IntersectBVH(ray, bestHit);
     if(need_gbuffer == 1 && count == 0 && bestHit.distance < 1.#INF){
         uint width, height;
-        Result.GetDimensions(width, height);
+        DirectIllumination.GetDimensions(width, height);
         float4 lastScreenPos = mul(_LastVP, float4(bestHit.position, 1.0));
         lastScreenPos /= lastScreenPos.w;
 
@@ -754,12 +786,10 @@ RayHit Trace(Ray ray, int count)
 
 
 
-float3 Shade(inout Ray ray, inout RayHit hit)
+float4 Shade(inout Ray ray, inout RayHit hit)
 {
-    if (hit.distance < 1.#INF)
+    //if (hit.distance < 1.#INF)
     {
-        if(energy(hit.emission) > 0.0)
-            return hit.emission;
         float4 brdf;
         switch (hit.type) {
         case 0:
@@ -772,7 +802,7 @@ float3 Shade(inout Ray ray, inout RayHit hit)
             brdf = hit.sampleMetallicWorkflow(ray);
             break;
         case 2:
-            brdf = hit.sampleDielectric(ray);
+            brdf = hit.sampleDielectric2(ray);
             break;
         default:
             ray.energy *= 0;
@@ -785,24 +815,25 @@ float3 Shade(inout Ray ray, inout RayHit hit)
            return 0.0f;
         }
 
-        ray.energy *= brdf.rgb / brdf.a;
+        //ray.energy *= brdf.rgb / brdf.a;
 		ray.origin = hit.position + ray.direction * 0.001f;
-        return hit.emission;;
-    }
-    else
-    {
-        // no hit, set energy to 0
-        ray.energy = float3(0.0f, 0.0f, 0.0f);
-//return float3(0.3, 0.3, 0.2);
-        // darkness
-        if (_SkyboxEnabled == 0)
-            return float3(0, 0, 0);
-        // Sample the skybox and write it
-        float theta = acos(ray.direction.y) / -PI;
-        float phi = atan2(ray.direction.x, -ray.direction.z) / -PI * 0.5f;
-        return (_SkyboxTexture.SampleLevel(sampler_SkyboxTexture, float2(phi, theta), 0).xyz);
+        return brdf;
     }
 }
+
+
+
+void WriteResult(uint2 id, float3 direct, float3 indirect)
+{
+    //float3 result = pow(color, 1.0/2.2);
+    //HDR to LDR
+    direct = direct / (direct + 1.0);
+    DirectIllumination[id.xy] = float4(direct, 1);
+
+    indirect = indirect / (indirect + 1.0);
+    IndirectIllumination[id.xy] = float4(indirect, 1);
+}
+
 
 
 
@@ -810,54 +841,202 @@ float3 Shade(inout Ray ray, inout RayHit hit)
 void CSMain (uint3 id : SV_DispatchThreadID)
 {
     pixel = id.xy;
-    if(need_gbuffer == 1)
-    {
-        GbufferPosition[id.xy] = float4(0, 0, 0, 0);
-        GbufferNormal[id.xy] = float4(0, 0, 0, 0);
-        GbufferAlbedo[id.xy] = float4(0, 0, 0, 0);
-        GbufferMotion[pixel] = float4(0, 0, 0, 0);
-    }
-
     // Get the dimensions of the RenderTexture
     uint width, height;
-    Result.GetDimensions(width, height);
+    DirectIllumination.GetDimensions(width, height);
 
     // Transform pixel to [-1,1] range
     // jittered ray sample, random(0-1, 0-1)
     
     float2 uv = float2((id.xy + _JitterOffset) / float2(width, height) * 2.0f - 1.0f);
+    
+    float2 uv_unjitter = float2((id.xy) / float2(width, height) * 2.0f - 1.0f);
+
+    if(need_gbuffer == 1)
+    {
+        GbufferPosition[pixel] = float4(0, 0, 0, 0);
+        GbufferNormal[pixel] = float4(0, 0, 0, 0);
+        GbufferAlbedo[pixel] = float4(0, 0, 0, 0);
+        GbufferMotion[pixel] = float4(0, 0, 0, 0);
+    }
+    //unjittered ray for Gbuffer
+    Ray oriRayUnjitter = CreateCameraRay(uv_unjitter);
+    oriRayUnjitter.invDir = 1.0f / oriRayUnjitter.direction;
+    RayHit gbufferHit = Trace(oriRayUnjitter, 0);
+
 
     // Get a ray from the UVs
-    Ray ray = CreateCameraRay(uv);
+    Ray oriRay = CreateCameraRay(uv);
     //Ray ray = CreatePhysicalCameraRay(uv);  
+    // update ray invDir (for AABB test)
+    oriRay.invDir = 1.0f / oriRay.direction;
+
+    LightSource _LightSource;
+    _LightSource.CreateLightSource();
 
     // Path Trace and shade
-    float3 result = float3(0, 0, 0);
+    float3 direct = float3(0, 0, 0);
+    float3 indirect = float3(0, 0, 0);
 
-    for (int i = 0; i < _MaxReflections /* max bounce */; i++)
+    Ray ray = oriRay;
+    RayHit firstHit = Trace(ray, 1);
+    //hit nothing
+    if (!(firstHit.distance < 1.#INF)){
+        WriteResult(id.xy , direct, indirect);
+        return;
+        // Sample the skybox and write it
+    //    float theta = acos(ray.direction.y) / -PI;
+    //    float phi = atan2(ray.direction.x, -ray.direction.z) / -PI * 0.5f;
+    //    float3 emission = _SkyboxTexture.SampleLevel(sampler_SkyboxTexture, float2(phi, theta), 0).xyz;
+    //    return WriteResult(result + energy * emission);
+    }
+    //hit a light
+    if(energy(firstHit.emission) > 0.0f){
+        WriteResult(id.xy, direct, clamp(firstHit.emission, 0, 1));
+        return;  
+    }
+    RayHit hit = firstHit;
+    for (int i = 1; i < _MaxReflections/* max bounce */; i++)
     {
-        // update ray invDir (for AABB test)
+        if(hit.type == 2) break;
+        
+        float3 lightPosition = _LightSource.SampleLight();
+        float lightPdf = _LightSource.GetLightPdf(hit.position, lightPosition);
+        float3 lightdir = normalize(lightPosition - hit.position);
+
+        float3 bsdf = hit.metallicWorkflowBSDF(hit.normal, -ray.direction, lightdir) ;
+        float pdf = hit.metallicWorkflowPdf(hit.normal, -ray.direction, lightdir) ;
+        ray.direction = normalize(lightPosition - hit.position);
+        ray.energy *= (bsdf.rgb) * satDot(hit.normal, ray.direction) / (lightPdf + pdf) * 2;
+        ray.origin = hit.position + ray.direction * 0.001f;
         ray.invDir = 1.0f / ray.direction;
-        RayHit hit = Trace(ray, i);
 
-        //multiply throughput at current ray path with emission
-        //Rendering Equation
-        float3 energy = ray.energy;
-        float3 emission = Shade(ray, hit);
-        result += energy * emission;
+        //next hit
+        hit = Trace(ray, i);
 
-        // if hit light source or hit nothing, break
-        if (any(emission) || !any(ray.energy))
+        //hit nothing
+        if (!(hit.distance < 1.#INF)){
+            break;
+        }
+        //hit a light
+        if(energy(hit.emission) > 0.0f && dot(hit.normal, float3(0, -1, 0)) > 0.0 )
+        {
+            if(i == 1)
+                direct += ray.energy * hit.emission;
+            else
+                indirect += ray.energy * hit.emission;
+            break;
+        }
+    }
+
+    ray = oriRay;
+    hit = firstHit;
+    for (int i = 1; i < _MaxReflections/* max bounce */; i++)
+    {
+        if(dot(hit.normal, -ray.direction) <= 0.0)
         {
             break;
         }
+        float4 brdf = Shade(ray, hit);
+        if (!any(brdf) || !any(ray.energy) || brdf.a < 1e-8 || dot(hit.normal, ray.direction) <= 0.0)
+        {
+            break;
+        }
+         
+    
+        float pdf = brdf.a;
+        ray.invDir = 1.0f / ray.direction;
+        Ray test_ray = ray;
+        RayHit test_hit = Trace(test_ray, i);
+        float lightpdf = 0.0; 
+        if(hit.type != 2){ 
+            if(test_hit.distance < 1.#INF && energy(test_hit.emission) > 0.0 && dot(test_hit.normal,float3(0, -1, 0)) > 0.9 )
+            {
+                lightpdf = _LightSource.GetLightPdf(hit.position, test_hit.position);
+            }
+            ray.energy = ray.energy * brdf.rgb * (hit.type != 2 ? satDot(hit.normal, ray.direction) : 1) / pdf * 2.0;
         
+        }
+        else
+            ray.energy = ray.energy * brdf.rgb / pdf * 2;
+              
+        //next hit
+        hit = test_hit;
+      
+        //hit nothing
+        if (!(hit.distance < 1.#INF)){
+            //if (_SkyboxEnabled == 0)
+            //WriteResult(id.xy , result);
+            break;
+    
+            // Sample the skybox and write it
+        //    float theta = acos(ray.direction.y) / -PI;
+        //    float phi = atan2(ray.direction.x, -ray.direction.z) / -PI * 0.5f;
+        //    float3 emission = _SkyboxTexture.SampleLevel(sampler_SkyboxTexture, float2(phi, theta), 0).xyz;
+        //    return WriteResult(result + energy * emission);
+        }
+        //hit a light
+        if(energy(hit.emission) > 0.0f && dot(hit.normal,float3(0, -1, 0)) > 0.99)
+        {
+            if(i == 1)
+                direct += ray.energy * hit.emission;
+            else
+                indirect += ray.energy * hit.emission;
+            break;
+        }
     }
-    //demodulate
-    //IndirectLighting[id.xy] = float4(indirect, 1);
-    //DirectLighting[id.xy] = float4(direct, 1);
-
-    //HDR to LDR
-    result = result / (result + 1.0);
-    Result[id.xy] = float4(result, 1);
+ // for (int i = 1; i < 0 /* max bounce */; i++)
+ // {
+ //     //multiply throughput at current ray path with emission
+ //     //Rendering Equation
+ //     if(hit.type != 2)
+ //     {
+ //         float3 lightCenter = float3(-283.8, -1.35, -238.9);
+ //         float2 lightSize = float2(50, 75);
+ //         float3 lightPosition = SampleLight(lightCenter, lightSize);
+ //         float lightPdf = GetLightPdf(1.0/(50 * 75.0), hit.position, lightPosition, float3(0, -1, 0));
+ //         if (lightPdf > 0) {
+ //              float3 lightdir = lightPosition - hit.position;
+ // 
+ //              float3 bsdf = hit.metallicWorkflowBSDF(hit.normal, -ray.direction, lightdir) ;
+ //              float pdf = hit.metallicWorkflowPdf(hit.normal, -ray.direction, lightdir) ;
+ //              float3 lightEmission = float3(3,3,3) * 4;
+ //              
+ //              result = result + ray.energy * lightEmission * bsdf.rgb * satDot(hit.normal, normalize(lightPosition - hit.position)) / lightPdf * powerHeuristic(lightPdf, pdf);
+ //              
+ //         }
+ //      
+ //     }
+ //     float4 brdf = Shade(ray, hit);
+ //     //Invalid shading
+ //     if (!any(brdf) || !any(ray.energy) || brdf.a < 1e-7)
+ //     {
+ //         break;
+ //     }
+ //     float3 curpos = hit.position; 
+ //
+ //     
+ //     //Go for another hit
+ //     bool isDialectic = (hit.type == 2);
+ //     ray.energy *= brdf.rgb / brdf.a * (isDialectic ? 1.f : absDot(hit.normal, ray.direction));
+ //
+ //     ray.invDir = 1.0f / ray.direction;
+ //     hit = Trace(ray, i);
+ //
+ //     if (!(hit.distance < 1.#INF)){
+ //         break;
+ //     }
+ //     if(energy(hit.emission) > 0.0f){
+ //         float3 emission = hit.emission;
+ //         float lightPdf = GetLightPdf( 1.0/(100.0 * 150.0), curpos, hit.position, hit.normal);
+ //
+//		float weight = isDialectic ? 1 : powerHeuristic(brdf.a, lightPdf);
+//		result += hit.emission * ray.energy * weight;
+ //         break;
+ //     }
+ //     
+ // }
+  WriteResult(pixel, direct, indirect);
+  return;
 }
+ 

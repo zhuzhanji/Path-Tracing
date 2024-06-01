@@ -61,45 +61,64 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 	uint2 lastUV = _MotionTexture[id.xy].xy * uint2(width, height);
 
     float4 norm = _NormalTexture[id.xy];
-    float3 position = _PositionTexture[id.xy];
+    float3 position = _PositionTexture[id.xy].xyz;
 	
-	float4 lastNorm = _LastNormalTexture[lastUV];
-    float3 lastPos =  _LastPositionTexture[lastUV].xyz;
-
-	float3 lastColor = devAccumColorIn[lastUV].xyz;
-	float3 lastMoment = devAccumMomentIn[lastUV].xyz;
-
-/*
-todo: 2*2 tap bilinear filter
-*/
-
-	bool diff = _FirstFrame;
-	if (abs(dot(norm.xyz, lastNorm.xyz)) < .1f) {
-		diff = true;
-	}
-	//matid
-	if(abs(norm.w - lastNorm.w) > 0.1){
-		diff = true;
-    }
 
 	float3 color = devColorIn[pixel];
 
 	float lum = luminance(color);
 
-	float3 accumColor;
-	float3 accumMoment;
+	float3 accumColor = float3(0, 0, 0);
+	float3 accumMoment = float3(0, 0, 0);
 
-	if (diff) {
+	if (_FirstFrame || norm.w <= 0) {
 		accumColor = color;
 		accumMoment = float3( lum, lum * lum, 0.f );
 	}
 	else {
-		const float Alpha = .2f;
-		accumColor = lerp(lastColor, color, Alpha);
-		accumMoment = float3(lerp(lastMoment.rg, float2(lum, lum * lum), Alpha), lastMoment.b + 1.f);
-	}
+		int count = 0;
+		for(int i = 0; i <= 1; i++)
+		{
+			for(int j = 0; j <= 1; j++){
+				int x = lastUV.x + i;
+				int y = lastUV.y + j;
+				if(x >= width || y >= height) continue;
+				uint2 uv = uint2(x, y);
+				float4 lastNorm = _LastNormalTexture[uv];
+				if (abs(dot(norm.xyz, lastNorm.xyz)) < .1f) {
+					continue;
+				}
+				if(abs(norm.w - lastNorm.w) > 0.1){
+					continue;
+				}
+				
+				//float3 lastPos =  _LastPositionTexture[uv].xyz;
+				//if(distance(position , lastPos) > 0.1){
+				//	continue;
+                //}
+				float3 lastColor = devAccumColorIn[uv].xyz;
+				float3 lastMoment = devAccumMomentIn[uv].xyz;
+				accumColor += lastColor;
+				accumMoment += lastMoment;
+				count ++;
 
+            }
+        }
+		if(count > 0)
+		{
+			const float Alpha = .2f;
+			accumColor = lerp(accumColor / count, color, Alpha);
+			accumMoment = float3(lerp(accumMoment.rg/count, float2(lum, lum * lum), Alpha), accumMoment.b/count + 1.f);
+		}
+		else
+		{
+			accumColor = color;
+			accumMoment = float3( lum, lum * lum, 0.f );
+        }
+
+	}
+ 
 
 	devAccumColorOut[pixel] = float4(accumColor, 1.0);
-	devAccumMomentOut[pixel] = float4(accumMoment, int(diff));
+	devAccumMomentOut[pixel] = float4(accumMoment, 1);
 }

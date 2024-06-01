@@ -13,7 +13,7 @@ public class RayTraceableSphere : MonoBehaviour
     public Sphere ToSphere() {
         return new Sphere() {
             center = transform.position,
-            radius = transform.localScale.x / 2f,
+            radius = transform.localScale.x * transform.parent.localScale.x  / 2f,
             albedo = (Vector3)(Vector4)albedo,
             specular = (Vector3)(Vector4)specular,
             emission = (Vector3)(Vector4)emission,
